@@ -1,0 +1,32 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build binaries
+    strategy:
+      matrix:
+        goos: [linux, darwin]
+        goarch: [amd64, arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Test
+        run: go test ./...
+      - name: Build
+        run: |
+          mkdir -p dist
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 \
+            go build -o dist/stooges-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/stooges
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: stooges-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/stooges-${{ matrix.goos }}-${{ matrix.goarch }}
