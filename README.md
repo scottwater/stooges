@@ -5,6 +5,12 @@ Unified AFS workspace CLI using a managed `.stooges` base repo plus sibling agen
 ## Install
 
 ```bash
+curl -sSL https://raw.githubusercontent.com/scottwater/stooges/main/install.sh | bash
+```
+
+Or with Go:
+
+```bash
 go install github.com/scottwater/stooges/cmd/stooges@latest
 ```
 

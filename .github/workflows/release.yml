@@ -1,32 +1,31 @@
-name: release
+name: Release
 
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+
+permissions:
+  contents: write
 
 jobs:
-  build:
-    name: Build binaries
-    strategy:
-      matrix:
-        goos: [linux, darwin]
-        goarch: [amd64, arm64]
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23.x'
+          go-version: stable
+
       - name: Test
         run: go test ./...
-      - name: Build
-        run: |
-          mkdir -p dist
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 \
-            go build -o dist/stooges-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/stooges
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+
+      - uses: goreleaser/goreleaser-action@v6
         with:
-          name: stooges-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/stooges-${{ matrix.goos }}-${{ matrix.goarch }}
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
