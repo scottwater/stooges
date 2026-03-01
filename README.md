@@ -1,5 +1,12 @@
 # stooges
 
+> [!IMPORTANT]
+> If you already have a git worktree flow that works for you, stick with it.
+> Stooges is (simple) alternative to worktrees, but if they work for you, go for
+> it!
+
+
+
 Unified AFS workspace CLI using a managed `.stooges` base repo plus sibling agent clones.
 
 ## Install
