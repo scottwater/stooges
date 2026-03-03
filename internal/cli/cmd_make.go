@@ -12,6 +12,7 @@ import (
 func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	var source string
 	var branch string
+	var track string
 	const autoBranchSentinel = "__stooges_auto_branch__"
 
 	cmd := &cobra.Command{
@@ -48,6 +49,7 @@ func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 			result, err := svc.Make(cmd.Context(), model.MakeOptions{
 				Agent:      workspace,
 				Source:     source,
+				Track:      track,
 				Branch:     branchName,
 				BranchAuto: branchAuto,
 			})
@@ -65,6 +67,7 @@ func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&source, "source", "base", "Source workspace name (default: base/.stooges)")
+	cmd.Flags().StringVar(&track, "track", "", "Track remote branch in new workspace (fails when origin/<branch> is missing)")
 	cmd.Flags().StringVarP(&branch, "branch", "b", "", "Optional branch to checkout/create in new workspace (`-b` uses workspace name)")
 	if branchFlag := cmd.Flags().Lookup("branch"); branchFlag != nil {
 		branchFlag.NoOptDefVal = autoBranchSentinel

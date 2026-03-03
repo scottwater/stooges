@@ -71,10 +71,13 @@ type fakeGit struct {
 	currentBranchByRepo  map[string]string
 	remoteBranch         string
 	branchExistsByName   map[string]bool
+	localBranchExists    map[string]bool
+	remoteBranchExists   map[string]bool
 	ignoredPatterns      []string
 	ignoredPatternsErr   error
 	switchErr            map[string]error
 	switchCreateErr      map[string]error
+	switchTrackErr       map[string]error
 	statusByRepo         map[string]string
 	statusErr            error
 	ancestorByRepoBranch map[string]bool
@@ -87,6 +90,7 @@ type fakeGit struct {
 	pullErr              error
 	switches             []string
 	switchCreates        []string
+	switchTracks         []string
 	rebaseCalls          []string
 	abortCalls           []string
 	fetchCalls           int
@@ -119,6 +123,27 @@ func (f *fakeGit) BranchExists(_ context.Context, _ string, branch string) (bool
 		}
 	}
 	if branch == f.currentBranch || branch == f.remoteBranch {
+		return true, nil
+	}
+	return branch == "main" || branch == "master", nil
+}
+
+func (f *fakeGit) LocalBranchExists(_ context.Context, _ string, branch string) (bool, error) {
+	if f.localBranchExists != nil {
+		if ok, exists := f.localBranchExists[branch]; exists {
+			return ok, nil
+		}
+	}
+	return branch == "main" || branch == "master", nil
+}
+
+func (f *fakeGit) RemoteBranchExists(_ context.Context, _ string, branch string) (bool, error) {
+	if f.remoteBranchExists != nil {
+		if ok, exists := f.remoteBranchExists[branch]; exists {
+			return ok, nil
+		}
+	}
+	if branch == f.remoteBranch {
 		return true, nil
 	}
 	return branch == "main" || branch == "master", nil
@@ -182,6 +207,15 @@ func (f *fakeGit) Switch(_ context.Context, _ string, branch string) error {
 func (f *fakeGit) SwitchCreate(_ context.Context, _ string, branch string) error {
 	f.switchCreates = append(f.switchCreates, branch)
 	if err, ok := f.switchCreateErr[branch]; ok {
+		return err
+	}
+	return nil
+}
+
+func (f *fakeGit) SwitchTrack(_ context.Context, _ string, localBranch, remoteBranch string) error {
+	key := localBranch + "|" + remoteBranch
+	f.switchTracks = append(f.switchTracks, key)
+	if err, ok := f.switchTrackErr[key]; ok {
 		return err
 	}
 	return nil
@@ -341,6 +375,104 @@ func TestMakeExplicitAgentBranchSwitchesExistingBranch(t *testing.T) {
 	}
 	if len(git.switchCreates) != 0 {
 		t.Fatalf("expected no branch create call, got %#v", git.switchCreates)
+	}
+}
+
+func TestMakeExplicitAgentTrackChecksOutRemoteBranch(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	mustWriteFile(t, filepath.Join(layout.BaseRepoPath, "README.md"), []byte("ok"))
+	git := &fakeGit{
+		topLevel:           workspace,
+		remoteBranchExists: map[string]bool{"feature/foo": true},
+		localBranchExists:  map[string]bool{"feature/foo": false},
+	}
+
+	svc := newTestService(t, workspace, git)
+	_, err := svc.Make(context.Background(), model.MakeOptions{Agent: "bob", Source: "base", Track: "feature/foo"})
+	if err != nil {
+		t.Fatalf("make failed: %v", err)
+	}
+	if git.fetchCalls != 1 {
+		t.Fatalf("expected one fetch call, got %d", git.fetchCalls)
+	}
+	if len(git.switchTracks) != 1 || git.switchTracks[0] != "feature/foo|feature/foo" {
+		t.Fatalf("expected track checkout feature/foo|feature/foo, got %#v", git.switchTracks)
+	}
+}
+
+func TestMakeExplicitAgentTrackWithBranchOverrideCreatesLocalTrackingBranch(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	mustWriteFile(t, filepath.Join(layout.BaseRepoPath, "README.md"), []byte("ok"))
+	git := &fakeGit{
+		topLevel:           workspace,
+		remoteBranchExists: map[string]bool{"feature/foo": true},
+		localBranchExists:  map[string]bool{"local-foo": false},
+	}
+
+	svc := newTestService(t, workspace, git)
+	_, err := svc.Make(context.Background(), model.MakeOptions{
+		Agent:  "bob",
+		Source: "base",
+		Track:  "feature/foo",
+		Branch: "local-foo",
+	})
+	if err != nil {
+		t.Fatalf("make failed: %v", err)
+	}
+	if len(git.switchTracks) != 1 || git.switchTracks[0] != "local-foo|feature/foo" {
+		t.Fatalf("expected track checkout local-foo|feature/foo, got %#v", git.switchTracks)
+	}
+}
+
+func TestMakeTrackFailsWhenRemoteBranchMissing(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	mustWriteFile(t, filepath.Join(layout.BaseRepoPath, "README.md"), []byte("ok"))
+	git := &fakeGit{
+		topLevel:           workspace,
+		remoteBranchExists: map[string]bool{"feature/foo": false},
+	}
+
+	svc := newTestService(t, workspace, git)
+	_, err := svc.Make(context.Background(), model.MakeOptions{Agent: "bob", Source: "base", Track: "feature/foo"})
+	if err == nil || !apperrors.IsKind(err, apperrors.KindInvalidInput) {
+		t.Fatalf("expected invalid input error, got %v", err)
+	}
+	if pathExists(filepath.Join(workspace, "bob")) {
+		t.Fatal("expected partially-created workspace removed after track failure")
+	}
+}
+
+func TestMakeTrackRequiresExplicitWorkspaceName(t *testing.T) {
+	workspace := t.TempDir()
+	mustSetupConfiguredWorkspace(t, workspace, "main")
+
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace})
+	_, err := svc.Make(context.Background(), model.MakeOptions{Source: "base", Track: "feature/foo"})
+	if err == nil || !apperrors.IsKind(err, apperrors.KindInvalidInput) {
+		t.Fatalf("expected invalid input error, got %v", err)
+	}
+}
+
+func TestMakeTrackRejectsAutoBranchName(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	mustWriteFile(t, filepath.Join(layout.BaseRepoPath, "README.md"), []byte("ok"))
+
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace})
+	_, err := svc.Make(context.Background(), model.MakeOptions{
+		Agent:      "bob",
+		Source:     "base",
+		Track:      "feature/foo",
+		BranchAuto: true,
+	})
+	if err == nil || !apperrors.IsKind(err, apperrors.KindInvalidInput) {
+		t.Fatalf("expected invalid input error, got %v", err)
+	}
+	if pathExists(filepath.Join(workspace, "bob")) {
+		t.Fatal("expected workspace not to be created")
 	}
 }
 

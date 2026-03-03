@@ -16,6 +16,8 @@ type Ops interface {
 	CurrentBranch(ctx context.Context, repo string) (string, error)
 	RemoteHEADBranch(ctx context.Context, repo string) (string, error)
 	BranchExists(ctx context.Context, repo, branch string) (bool, error)
+	LocalBranchExists(ctx context.Context, repo, branch string) (bool, error)
+	RemoteBranchExists(ctx context.Context, repo, branch string) (bool, error)
 	TopLevel(ctx context.Context, dir string) (string, error)
 	StatusPorcelain(ctx context.Context, repo string) (string, error)
 	IsAncestor(ctx context.Context, repo, ancestor, descendant string) (bool, error)
@@ -23,6 +25,7 @@ type Ops interface {
 	FetchPrune(ctx context.Context, repo string) error
 	Switch(ctx context.Context, repo, branch string) error
 	SwitchCreate(ctx context.Context, repo, branch string) error
+	SwitchTrack(ctx context.Context, repo, localBranch, remoteBranch string) error
 	PullFFOnly(ctx context.Context, repo string) error
 	Rebase(ctx context.Context, repo, onto string) error
 	AbortRebase(ctx context.Context, repo string) error
@@ -92,6 +95,30 @@ func (o *SystemOps) BranchExists(ctx context.Context, repo, branch string) (bool
 	}
 	remoteRef := "refs/remotes/origin/" + branch
 	ok, err = o.gitRefExists(ctx, repo, remoteRef)
+	if err != nil {
+		return false, apperrors.Wrap(apperrors.KindGitFailure, "check remote branch ref", err)
+	}
+	return ok, nil
+}
+
+func (o *SystemOps) LocalBranchExists(ctx context.Context, repo, branch string) (bool, error) {
+	if strings.TrimSpace(branch) == "" {
+		return false, apperrors.New(apperrors.KindInvalidInput, "branch name is required")
+	}
+	localRef := "refs/heads/" + branch
+	ok, err := o.gitRefExists(ctx, repo, localRef)
+	if err != nil {
+		return false, apperrors.Wrap(apperrors.KindGitFailure, "check local branch ref", err)
+	}
+	return ok, nil
+}
+
+func (o *SystemOps) RemoteBranchExists(ctx context.Context, repo, branch string) (bool, error) {
+	if strings.TrimSpace(branch) == "" {
+		return false, apperrors.New(apperrors.KindInvalidInput, "branch name is required")
+	}
+	remoteRef := "refs/remotes/origin/" + branch
+	ok, err := o.gitRefExists(ctx, repo, remoteRef)
 	if err != nil {
 		return false, apperrors.Wrap(apperrors.KindGitFailure, "check remote branch ref", err)
 	}
@@ -204,6 +231,24 @@ func (o *SystemOps) Switch(ctx context.Context, repo, branch string) error {
 func (o *SystemOps) SwitchCreate(ctx context.Context, repo, branch string) error {
 	if err := o.gitRun(ctx, repo, "switch", "-c", branch); err != nil {
 		return apperrors.Wrap(apperrors.KindGitFailure, fmt.Sprintf("git switch -c %s failed", branch), err)
+	}
+	return nil
+}
+
+func (o *SystemOps) SwitchTrack(ctx context.Context, repo, localBranch, remoteBranch string) error {
+	local := strings.TrimSpace(localBranch)
+	remote := strings.TrimSpace(remoteBranch)
+	if remote == "" {
+		return apperrors.New(apperrors.KindInvalidInput, "remote branch name is required")
+	}
+	if local == "" || local == remote {
+		if err := o.gitRun(ctx, repo, "switch", "--track", "origin/"+remote); err != nil {
+			return apperrors.Wrap(apperrors.KindGitFailure, fmt.Sprintf("git switch --track origin/%s failed", remote), err)
+		}
+		return nil
+	}
+	if err := o.gitRun(ctx, repo, "switch", "-c", local, "--track", "origin/"+remote); err != nil {
+		return apperrors.Wrap(apperrors.KindGitFailure, fmt.Sprintf("git switch -c %s --track origin/%s failed", local, remote), err)
 	}
 	return nil
 }

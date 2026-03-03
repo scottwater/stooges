@@ -45,6 +45,7 @@ type MakeOptions struct {
 	Agent      string
 	Source     string
 	Agents     []string
+	Track      string
 	Branch     string
 	BranchAuto bool
 }

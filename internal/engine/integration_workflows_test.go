@@ -29,7 +29,13 @@ func (g integrationGit) RemoteHEADBranch(context.Context, string) (string, error
 	return "main", nil
 }
 func (integrationGit) BranchExists(context.Context, string, string) (bool, error) { return true, nil }
-func (g integrationGit) TopLevel(context.Context, string) (string, error)         { return g.topLevel, nil }
+func (integrationGit) LocalBranchExists(context.Context, string, string) (bool, error) {
+	return true, nil
+}
+func (integrationGit) RemoteBranchExists(context.Context, string, string) (bool, error) {
+	return true, nil
+}
+func (g integrationGit) TopLevel(context.Context, string) (string, error) { return g.topLevel, nil }
 func (integrationGit) StatusPorcelain(context.Context, string) (string, error) {
 	return "", nil
 }
@@ -42,9 +48,10 @@ func (integrationGit) Switch(context.Context, string, string) error { return nil
 func (integrationGit) SwitchCreate(context.Context, string, string) error {
 	return nil
 }
-func (integrationGit) PullFFOnly(context.Context, string) error     { return nil }
-func (integrationGit) Rebase(context.Context, string, string) error { return nil }
-func (integrationGit) AbortRebase(context.Context, string) error    { return nil }
+func (integrationGit) SwitchTrack(context.Context, string, string, string) error { return nil }
+func (integrationGit) PullFFOnly(context.Context, string) error                  { return nil }
+func (integrationGit) Rebase(context.Context, string, string) error              { return nil }
+func (integrationGit) AbortRebase(context.Context, string) error                 { return nil }
 
 type integrationPerms struct{}
 

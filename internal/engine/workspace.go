@@ -235,6 +235,21 @@ func resolveTargetBranchForWorkspace(opts model.MakeOptions, workspace string, c
 	return branch, true, nil
 }
 
+func resolveTrackBranches(opts model.MakeOptions) (remoteBranch string, localBranch string, enabled bool, err error) {
+	remote := strings.TrimSpace(opts.Track)
+	if remote == "" {
+		return "", "", false, nil
+	}
+	if opts.BranchAuto {
+		return "", "", false, apperrors.New(apperrors.KindInvalidInput, "--track cannot be combined with auto branch naming (-b without value)")
+	}
+	local := strings.TrimSpace(opts.Branch)
+	if local == "" {
+		local = remote
+	}
+	return remote, local, true, nil
+}
+
 func (s *Service) checkoutOrCreateBranch(ctx context.Context, repo, branch string) error {
 	exists, err := s.git.BranchExists(ctx, repo, branch)
 	if err != nil {
@@ -244,6 +259,30 @@ func (s *Service) checkoutOrCreateBranch(ctx context.Context, repo, branch strin
 		return s.git.Switch(ctx, repo, branch)
 	}
 	return s.git.SwitchCreate(ctx, repo, branch)
+}
+
+func (s *Service) checkoutTrackingBranch(ctx context.Context, repo, remoteBranch, localBranch string) error {
+	if err := s.git.Fetch(ctx, repo); err != nil {
+		return err
+	}
+	remoteExists, err := s.git.RemoteBranchExists(ctx, repo, remoteBranch)
+	if err != nil {
+		return err
+	}
+	if !remoteExists {
+		return apperrors.New(apperrors.KindInvalidInput, fmt.Sprintf("remote branch origin/%s does not exist", remoteBranch))
+	}
+	localExists, err := s.git.LocalBranchExists(ctx, repo, localBranch)
+	if err != nil {
+		return err
+	}
+	if localExists {
+		if localBranch != remoteBranch {
+			return apperrors.New(apperrors.KindInvalidInput, fmt.Sprintf("local branch %q already exists; choose a different --branch name", localBranch))
+		}
+		return s.git.Switch(ctx, repo, localBranch)
+	}
+	return s.git.SwitchTrack(ctx, repo, localBranch, remoteBranch)
 }
 
 func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (model.MakeResult, error) {
@@ -262,6 +301,13 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (model.MakeR
 	}
 	if _, err := s.preflight.EnsureMutating(ctx, PreflightOptions{WorkspacePath: workspaceRoot, RequireSourceGit: true, SourceRepoPath: sourcePath}); err != nil {
 		return model.MakeResult{}, err
+	}
+	trackRemote, trackLocal, trackingEnabled, err := resolveTrackBranches(opts)
+	if err != nil {
+		return model.MakeResult{}, err
+	}
+	if trackingEnabled && strings.TrimSpace(opts.Agent) == "" {
+		return model.MakeResult{}, apperrors.New(apperrors.KindInvalidInput, "--track requires an explicit workspace name")
 	}
 
 	if strings.TrimSpace(opts.Agent) != "" {
@@ -287,7 +333,15 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (model.MakeR
 			}
 			return model.MakeResult{}, err
 		}
-		if shouldSwitchBranch {
+		if trackingEnabled {
+			if err := s.checkoutTrackingBranch(ctx, dst, trackRemote, trackLocal); err != nil {
+				rollbackErr := rollbackCreatedWorkspaces(workspaceRoot, []string{agent})
+				if rollbackErr != nil {
+					return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(err, rollbackErr))
+				}
+				return model.MakeResult{}, err
+			}
+		} else if shouldSwitchBranch {
 			if err := s.checkoutOrCreateBranch(ctx, dst, targetBranch); err != nil {
 				rollbackErr := rollbackCreatedWorkspaces(workspaceRoot, []string{agent})
 				if rollbackErr != nil {

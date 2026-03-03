@@ -45,7 +45,7 @@ stooges init -m master --agents larry,moe
 ## `add`
 
 ```bash
-stooges add [workspace] [--source <workspace>] [--branch [name]|-b[name]]
+stooges add [workspace] [--source <workspace>] [--track <branch>] [--branch [name]|-b[name]]
 ```
 
 Behavior:
@@ -57,6 +57,10 @@ Behavior:
 - `--branch <name>` checks out existing branch (or creates it when missing) in each new workspace.
 - `-b` / `--branch` (no value) uses workspace name as branch name.
 - Named `--branch` with no explicit workspace is allowed only when exactly one workspace is created.
+- `--track <branch>` tracks `origin/<branch>` in the new workspace and fails if remote branch is missing.
+- `--track` requires an explicit workspace name.
+- With `--track`, `--branch <name>` sets local branch name while tracking `origin/<track>`.
+- `--track` cannot be combined with `-b` (auto branch naming).
 - If all defaults exist, no-op with guidance message.
 - Never overwrites existing directories.
 
@@ -67,6 +71,8 @@ stooges add moe
 stooges add --source base
 stooges add bob -b
 stooges add bob --branch not_bob
+stooges add bob --track feature/foo
+stooges add bob --track feature/foo --branch local-foo
 ```
 
 ## `sync`

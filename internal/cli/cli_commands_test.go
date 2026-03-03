@@ -123,6 +123,36 @@ func TestAddBranchFlagNamedUsesProvidedBranch(t *testing.T) {
 	}
 }
 
+func TestAddTrackFlagUsesProvidedRemoteBranch(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"add", "bob", "--track", "feature/foo"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if svc.lastMake.Track != "feature/foo" || svc.lastMake.Branch != "" || svc.lastMake.BranchAuto {
+		t.Fatalf("expected track flag passthrough, got %#v", svc.lastMake)
+	}
+}
+
+func TestAddTrackFlagWithBranchOverridePassesBoth(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"add", "bob", "--track", "feature/foo", "--branch", "local-foo"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if svc.lastMake.Track != "feature/foo" || svc.lastMake.Branch != "local-foo" || svc.lastMake.BranchAuto {
+		t.Fatalf("expected track + branch passthrough, got %#v", svc.lastMake)
+	}
+}
+
 func TestNoArgsRunsInteractiveAndDoctor(t *testing.T) {
 	svc := &fakeService{}
 	out := &bytes.Buffer{}

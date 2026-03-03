@@ -91,6 +91,7 @@ trash feature-x
 ```
 
 You can add a new workspace at any time with `stooges add`. The `-b` flag creates a branch named after the workspace, or use `--branch name` for a specific branch name.
+Use `--track <branch>` to track `origin/<branch>` in a newly created workspace (optionally with `--branch <local-name>`).
 
 ## Keeping in sync
 
@@ -119,6 +120,8 @@ stooges add                # create missing default workspaces
 stooges add moe            # create one workspace
 stooges add bob -b         # create workspace + branch named "bob"
 stooges add bob --branch x # create workspace + branch named "x"
+stooges add bob --track feature/foo              # track origin/feature/foo
+stooges add bob --track feature/foo --branch foo # local "foo" tracking origin/feature/foo
 
 stooges sync               # sync base repo from remote
 stooges clean              # sync + prune stale refs
