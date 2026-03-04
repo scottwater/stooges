@@ -19,6 +19,7 @@ type WorkspaceService interface {
 	Make(context.Context, model.MakeOptions) (model.MakeResult, error)
 	Sync(context.Context, model.SyncOptions) (model.SyncResult, error)
 	Clean(context.Context, model.CleanOptions) (model.CleanResult, error)
+	List(context.Context, model.ListOptions) (model.ListResult, error)
 	Unlock(context.Context, model.UnlockOptions) (model.UnlockResult, error)
 	Lock(context.Context, model.LockOptions) (model.LockResult, error)
 	Rebase(context.Context, model.RebaseOptions) (model.RebaseResult, error)
@@ -135,7 +136,7 @@ func (s *Service) Doctor(ctx context.Context, opts model.DoctorOptions) (model.D
 	var layout WorkspaceLayout
 	var layoutErr error
 	if layoutConfigured {
-		layout, layoutErr = loadWorkspaceLayout(workspaceRoot)
+		layout, layoutErr = loadWorkspaceLayoutWithCleanup(workspaceRoot)
 	}
 
 	if !layoutConfigured {

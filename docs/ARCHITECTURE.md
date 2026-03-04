@@ -49,6 +49,7 @@ No overwrite path exists in `add`; existing targets are not replaced.
 - `stooges add` -> `Service.Make`
 - `stooges sync` -> `Service.Sync`
 - `stooges clean` -> `Service.Clean`
+- `stooges list` / `stooges ls` -> `Service.List`
 - `stooges rebase` -> `Service.Rebase`
 - `stooges unlock` -> `Service.Unlock`
 - `stooges lock` -> `Service.Lock`

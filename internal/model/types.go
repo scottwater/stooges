@@ -75,6 +75,8 @@ type RebaseOptions struct {
 	Prune bool
 }
 
+type ListOptions struct{}
+
 type UndoOptions struct {
 	Base string
 }
@@ -113,6 +115,20 @@ type RebaseResult struct {
 	Conflicted     []string
 	SkippedDirty   []string
 	SkippedCurrent []string
+}
+
+type WorkspaceListEntry struct {
+	Name              string
+	Path              string
+	Branch            string
+	LastCommitShort   string
+	LastCommitMessage string
+	Missing           bool
+}
+
+type ListResult struct {
+	WorkspaceRoot string
+	Entries       []WorkspaceListEntry
 }
 
 type UndoResult struct {

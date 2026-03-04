@@ -14,6 +14,8 @@ import (
 
 type Ops interface {
 	CurrentBranch(ctx context.Context, repo string) (string, error)
+	BranchName(ctx context.Context, repo string) (string, error)
+	HeadCommit(ctx context.Context, repo string) (shortSHA string, subject string, err error)
 	RemoteHEADBranch(ctx context.Context, repo string) (string, error)
 	BranchExists(ctx context.Context, repo, branch string) (bool, error)
 	LocalBranchExists(ctx context.Context, repo, branch string) (bool, error)
@@ -66,6 +68,32 @@ func (o *SystemOps) CurrentBranch(ctx context.Context, repo string) (string, err
 		return "", apperrors.Wrap(apperrors.KindGitFailure, "detect current branch", err)
 	}
 	return strings.TrimSpace(out), nil
+}
+
+func (o *SystemOps) BranchName(ctx context.Context, repo string) (string, error) {
+	out, err := o.gitOutput(ctx, repo, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", apperrors.Wrap(apperrors.KindGitFailure, "detect branch name", err)
+	}
+	return strings.TrimSpace(out), nil
+}
+
+func (o *SystemOps) HeadCommit(ctx context.Context, repo string) (string, string, error) {
+	shortSHA, err := o.gitOutput(ctx, repo, "rev-parse", "--short", "HEAD")
+	if err != nil {
+		if isNoCommitError(err) {
+			return "", "", nil
+		}
+		return "", "", apperrors.Wrap(apperrors.KindGitFailure, "read short commit sha", err)
+	}
+	subject, err := o.gitOutput(ctx, repo, "log", "-1", "--pretty=%s")
+	if err != nil {
+		if isNoCommitError(err) {
+			return "", "", nil
+		}
+		return "", "", apperrors.Wrap(apperrors.KindGitFailure, "read last commit subject", err)
+	}
+	return strings.TrimSpace(shortSHA), strings.TrimSpace(subject), nil
 }
 
 func (o *SystemOps) RemoteHEADBranch(ctx context.Context, repo string) (string, error) {
@@ -324,6 +352,17 @@ func splitNonEmptyLines(s string) []string {
 		}
 	}
 	return out
+}
+
+func isNoCommitError(err error) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "needed a single revision") ||
+		strings.Contains(lower, "does not have any commits yet") ||
+		strings.Contains(lower, "unknown revision") ||
+		strings.Contains(lower, "bad revision")
 }
 
 func (o *SystemOps) gitRefExists(ctx context.Context, repo, ref string) (bool, error) {

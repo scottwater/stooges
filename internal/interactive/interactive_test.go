@@ -37,6 +37,9 @@ func (f *fakeService) Sync(context.Context, model.SyncOptions) (model.SyncResult
 func (f *fakeService) Clean(context.Context, model.CleanOptions) (model.CleanResult, error) {
 	return model.CleanResult{}, nil
 }
+func (f *fakeService) List(context.Context, model.ListOptions) (model.ListResult, error) {
+	return model.ListResult{}, nil
+}
 func (f *fakeService) Rebase(context.Context, model.RebaseOptions) (model.RebaseResult, error) {
 	return model.RebaseResult{}, nil
 }

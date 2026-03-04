@@ -49,6 +49,7 @@ func NewRootCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	root.AddCommand(newMakeCmd(svc, streams))
 	root.AddCommand(newSyncCmd(svc, streams))
 	root.AddCommand(newCleanCmd(svc, streams))
+	root.AddCommand(newListCmd(svc, streams))
 	root.AddCommand(newRebaseCmd(svc, streams))
 	root.AddCommand(newUnlockCmd(svc, streams))
 	root.AddCommand(newLockCmd(svc, streams))

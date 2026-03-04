@@ -25,6 +25,12 @@ type integrationGit struct {
 func (g integrationGit) CurrentBranch(context.Context, string) (string, error) {
 	return g.currentBranch, nil
 }
+func (g integrationGit) BranchName(context.Context, string) (string, error) {
+	return g.currentBranch, nil
+}
+func (integrationGit) HeadCommit(context.Context, string) (string, string, error) {
+	return "abc1234", "latest commit", nil
+}
 func (g integrationGit) RemoteHEADBranch(context.Context, string) (string, error) {
 	return "main", nil
 }

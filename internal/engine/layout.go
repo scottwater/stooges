@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -125,11 +126,44 @@ func resolveWorkspaceAndLayout(cwd string) (string, WorkspaceLayout, error) {
 	if strings.TrimSpace(root) == "" {
 		return "", WorkspaceLayout{}, apperrors.New(apperrors.KindInvalidInput, "workspace path is empty")
 	}
-	layout, err := loadWorkspaceLayout(root)
+	layout, err := loadWorkspaceLayoutWithCleanup(root)
 	if err != nil {
 		return "", WorkspaceLayout{}, err
 	}
 	return root, layout, nil
+}
+
+func loadWorkspaceLayoutWithCleanup(root string) (WorkspaceLayout, error) {
+	layout, err := loadWorkspaceLayout(root)
+	if err != nil {
+		return WorkspaceLayout{}, err
+	}
+
+	cleaned := make([]string, 0, len(layout.ManagedWorkspaces))
+	for _, workspace := range layout.ManagedWorkspaces {
+		workspacePath := filepath.Join(layout.WorkspaceRoot, workspace)
+		info, statErr := os.Stat(workspacePath)
+		if statErr != nil {
+			if errors.Is(statErr, os.ErrNotExist) {
+				continue
+			}
+			return WorkspaceLayout{}, apperrors.Wrap(apperrors.KindFilesystemFailure, fmt.Sprintf("check workspace path %s", workspace), statErr)
+		}
+		if !info.IsDir() {
+			continue
+		}
+		cleaned = append(cleaned, workspace)
+	}
+	cleaned = normalizeManagedWorkspaces(cleaned)
+	if slices.Equal(cleaned, layout.ManagedWorkspaces) {
+		return layout, nil
+	}
+
+	layout.ManagedWorkspaces = cleaned
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		return WorkspaceLayout{}, err
+	}
+	return layout, nil
 }
 
 func resolveBaseRepo(layout WorkspaceLayout, explicit string) (string, error) {

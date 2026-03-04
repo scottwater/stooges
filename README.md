@@ -126,6 +126,7 @@ stooges add bob --track feature/foo --branch foo # local "foo" tracking origin/f
 stooges sync               # sync base repo from remote
 stooges clean              # sync + prune stale refs
 stooges rebase --prune     # sync + rebase workspaces onto base
+stooges list               # list base + workspaces with branch and latest commit
 
 stooges undo --yes         # tear down workspace layout (destructive)
 ```
@@ -137,6 +138,7 @@ stooges undo --yes         # tear down workspace layout (destructive)
 - `sync` — fetch & update the base repo
 - `clean` — sync + prune stale remote-tracking refs
 - `rebase` — sync base + rebase workspace branches
+- `list` (`ls`) — show base + managed workspaces with git head info
 - `unlock` / `lock` — toggle read-only protection on the base
 - `undo` (alias: `remove`) — tear down and restore original layout
 - `doctor` — check platform support and workspace health

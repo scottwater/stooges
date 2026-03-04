@@ -69,6 +69,10 @@ type fakeGit struct {
 	topLevel             string
 	currentBranch        string
 	currentBranchByRepo  map[string]string
+	branchNameByRepo     map[string]string
+	headShortByRepo      map[string]string
+	headSubjectByRepo    map[string]string
+	headErr              error
 	remoteBranch         string
 	branchExistsByName   map[string]bool
 	localBranchExists    map[string]bool
@@ -107,6 +111,38 @@ func (f *fakeGit) CurrentBranch(_ context.Context, repo string) (string, error) 
 		return "", errors.New("no branch")
 	}
 	return f.currentBranch, nil
+}
+
+func (f *fakeGit) BranchName(_ context.Context, repo string) (string, error) {
+	if f.branchNameByRepo != nil {
+		if branch, ok := f.branchNameByRepo[repo]; ok {
+			return branch, nil
+		}
+	}
+	branch, err := f.CurrentBranch(context.Background(), repo)
+	if err != nil {
+		return "main", nil
+	}
+	return branch, nil
+}
+
+func (f *fakeGit) HeadCommit(_ context.Context, repo string) (string, string, error) {
+	if f.headErr != nil {
+		return "", "", f.headErr
+	}
+	short := "abc1234"
+	subject := "latest commit"
+	if f.headShortByRepo != nil {
+		if value, ok := f.headShortByRepo[repo]; ok {
+			short = value
+		}
+	}
+	if f.headSubjectByRepo != nil {
+		if value, ok := f.headSubjectByRepo[repo]; ok {
+			subject = value
+		}
+	}
+	return short, subject, nil
 }
 
 func (f *fakeGit) RemoteHEADBranch(context.Context, string) (string, error) {
@@ -918,6 +954,151 @@ func TestDoctorFromWorkspaceSubdirIsConfigured(t *testing.T) {
 		if check.Name == "repo_resolution" && strings.Contains(strings.ToLower(check.Message), "not configured yet") {
 			t.Fatalf("expected configured workspace from nested directory, got check %#v", check)
 		}
+	}
+}
+
+func TestListIncludesBaseAndManagedWorkspaces(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main", "larry", "moe")
+	larryPath := filepath.Join(workspace, "larry")
+	moePath := filepath.Join(workspace, "moe")
+	git := &fakeGit{
+		topLevel: workspace,
+		branchNameByRepo: map[string]string{
+			layout.BaseRepoPath: "main",
+			larryPath:           "feature/larry",
+			moePath:             "feature/moe",
+		},
+		headShortByRepo: map[string]string{
+			layout.BaseRepoPath: "base001",
+			larryPath:           "larry01",
+			moePath:             "moe0001",
+		},
+		headSubjectByRepo: map[string]string{
+			layout.BaseRepoPath: "chore: sync base",
+			larryPath:           "feat: add larry changes",
+			moePath:             "fix: tighten moe behavior",
+		},
+	}
+	svc := newTestService(t, workspace, git)
+
+	res, err := svc.List(context.Background(), model.ListOptions{})
+	if err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+	if res.WorkspaceRoot != workspace {
+		t.Fatalf("expected workspace root %s, got %s", workspace, res.WorkspaceRoot)
+	}
+	if len(res.Entries) != 3 {
+		t.Fatalf("expected 3 entries, got %#v", res.Entries)
+	}
+	if res.Entries[0].Name != "base" || res.Entries[0].Branch != "main" || res.Entries[0].LastCommitShort != "base001" {
+		t.Fatalf("unexpected base entry %#v", res.Entries[0])
+	}
+	if res.Entries[1].Name != "larry" || res.Entries[2].Name != "moe" {
+		t.Fatalf("expected sorted managed entries [larry moe], got %#v", res.Entries)
+	}
+}
+
+func TestListPrunesMissingWorkspaceReposFromOutputAndMetadata(t *testing.T) {
+	workspace := t.TempDir()
+	mustSetupConfiguredWorkspace(t, workspace, "main", "larry", "curly")
+	curlyPath := filepath.Join(workspace, "curly")
+	if err := os.RemoveAll(curlyPath); err != nil {
+		t.Fatalf("remove curly workspace: %v", err)
+	}
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace})
+
+	res, err := svc.List(context.Background(), model.ListOptions{})
+	if err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+	if len(res.Entries) != 2 {
+		t.Fatalf("expected 2 entries after pruning, got %#v", res.Entries)
+	}
+	for _, entry := range res.Entries {
+		if entry.Name == "curly" {
+			t.Fatalf("did not expect missing workspace in list output, got %#v", res.Entries)
+		}
+	}
+
+	layout, loadErr := loadWorkspaceLayout(workspace)
+	if loadErr != nil {
+		t.Fatalf("load workspace metadata: %v", loadErr)
+	}
+	var containsCurly bool
+	for _, name := range layout.ManagedWorkspaces {
+		if name == "curly" {
+			containsCurly = true
+			break
+		}
+	}
+	if containsCurly {
+		t.Fatalf("expected missing workspace removed from metadata, got %#v", layout.ManagedWorkspaces)
+	}
+}
+
+func TestRebasePrunesMissingWorkspaceMetadata(t *testing.T) {
+	workspace := t.TempDir()
+	mustSetupConfiguredWorkspace(t, workspace, "main", "larry", "curly")
+	curlyPath := filepath.Join(workspace, "curly")
+	if err := os.RemoveAll(curlyPath); err != nil {
+		t.Fatalf("remove curly workspace: %v", err)
+	}
+
+	git := &fakeGit{
+		topLevel: workspace,
+		currentBranchByRepo: map[string]string{
+			filepath.Join(workspace, "larry"): "feature/larry",
+		},
+		statusByRepo: map[string]string{
+			filepath.Join(workspace, "larry"): "",
+		},
+		ancestorByRepoBranch: map[string]bool{
+			filepath.Join(workspace, "larry") + "|main|feature/larry": true,
+		},
+	}
+	svc := newTestService(t, workspace, git)
+	if _, err := svc.Rebase(context.Background(), model.RebaseOptions{}); err != nil {
+		t.Fatalf("rebase failed: %v", err)
+	}
+
+	layout, loadErr := loadWorkspaceLayout(workspace)
+	if loadErr != nil {
+		t.Fatalf("load workspace metadata: %v", loadErr)
+	}
+	for _, name := range layout.ManagedWorkspaces {
+		if name == "curly" {
+			t.Fatalf("expected rebase lookup to prune missing workspace, got %#v", layout.ManagedWorkspaces)
+		}
+	}
+}
+
+func TestListFromWorkspaceDirectoryFindsConfiguredRoot(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main", "larry")
+	workspaceDir := filepath.Join(workspace, "larry", "pkg", "api")
+	mustMkdirAll(t, workspaceDir)
+	git := &fakeGit{topLevel: workspace}
+	svc := NewServiceWithDeps(Dependencies{
+		CWD:            func() (string, error) { return workspaceDir, nil },
+		Cloner:         fakeCloner{},
+		Perms:          &fakePerms{},
+		Git:            git,
+		Preflight:      NewPreflightChecker(fakeCloner{}),
+		Resolver:       NewRepoResolver(git),
+		BranchDetector: NewBranchDetector(git),
+	})
+
+	res, err := svc.List(context.Background(), model.ListOptions{})
+	if err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+	if res.WorkspaceRoot != workspace {
+		t.Fatalf("expected workspace root %s, got %s", workspace, res.WorkspaceRoot)
+	}
+	if res.Entries[0].Path != layout.BaseRepoPath {
+		t.Fatalf("expected base path %s, got %s", layout.BaseRepoPath, res.Entries[0].Path)
 	}
 }
 

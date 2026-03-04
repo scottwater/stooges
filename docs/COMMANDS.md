@@ -114,6 +114,19 @@ Behavior:
   - if conflict occurs, aborts rebase and reports workspace for manual handling
 - Prints grouped summary: rebased, dirty-skipped, current-skipped, conflicted.
 
+## `list` / `ls`
+
+```bash
+stooges list
+stooges ls
+```
+
+Behavior:
+- Lists `base` (`.stooges`) first, then managed workspaces from metadata.
+- Shows current branch, short HEAD commit SHA, and latest commit subject.
+- Prunes missing workspace folders from metadata and omits them from output.
+- Can run from workspace subdirectories; resolves the configured workspace root from current path.
+
 ## `unlock`
 
 ```bash

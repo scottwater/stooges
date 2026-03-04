@@ -15,6 +15,7 @@ type fakeService struct {
 	makeCalled   bool
 	doctorCalled bool
 	lockCalled   bool
+	listCalled   bool
 	rebaseCalled bool
 	undoCalled   bool
 	lastCtx      context.Context
@@ -43,6 +44,16 @@ func (f *fakeService) Sync(ctx context.Context, _ model.SyncOptions) (model.Sync
 func (f *fakeService) Clean(ctx context.Context, _ model.CleanOptions) (model.CleanResult, error) {
 	f.lastCtx = ctx
 	return model.CleanResult{RepoPath: "main"}, nil
+}
+func (f *fakeService) List(ctx context.Context, _ model.ListOptions) (model.ListResult, error) {
+	f.lastCtx = ctx
+	f.listCalled = true
+	return model.ListResult{
+		WorkspaceRoot: "/tmp/workspace",
+		Entries: []model.WorkspaceListEntry{
+			{Name: "base", Branch: "main", LastCommitShort: "abc1234", LastCommitMessage: "initial commit"},
+		},
+	}, nil
 }
 func (f *fakeService) Rebase(ctx context.Context, _ model.RebaseOptions) (model.RebaseResult, error) {
 	f.lastCtx = ctx
@@ -194,7 +205,7 @@ func TestVersionCommand(t *testing.T) {
 	if strings.TrimSpace(out.String()) != version.Value {
 		t.Fatalf("expected version %q, got %q", version.Value, strings.TrimSpace(out.String()))
 	}
-	if svc.doctorCalled || svc.makeCalled || svc.lockCalled || svc.rebaseCalled || svc.undoCalled {
+	if svc.doctorCalled || svc.makeCalled || svc.lockCalled || svc.listCalled || svc.rebaseCalled || svc.undoCalled {
 		t.Fatalf("version command should not call service methods: %#v", svc)
 	}
 }
@@ -211,8 +222,39 @@ func TestVersionFlag(t *testing.T) {
 	if strings.TrimSpace(out.String()) != version.Value {
 		t.Fatalf("expected version %q, got %q", version.Value, strings.TrimSpace(out.String()))
 	}
-	if svc.doctorCalled || svc.makeCalled || svc.lockCalled || svc.rebaseCalled || svc.undoCalled {
+	if svc.doctorCalled || svc.makeCalled || svc.lockCalled || svc.listCalled || svc.rebaseCalled || svc.undoCalled {
 		t.Fatalf("version flag should not call service methods: %#v", svc)
+	}
+}
+
+func TestListCommandDispatches(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: &bytes.Buffer{}})
+	cmd.SetArgs([]string{"list"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if !svc.listCalled {
+		t.Fatal("expected list command to call workspace list operation")
+	}
+	if !strings.Contains(out.String(), "workspace") || !strings.Contains(out.String(), "abc1234") {
+		t.Fatalf("expected workspace table output, got %q", out.String())
+	}
+}
+
+func TestListAliasDispatches(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: &bytes.Buffer{}})
+	cmd.SetArgs([]string{"ls"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if !svc.listCalled {
+		t.Fatal("expected ls alias to call workspace list operation")
 	}
 }
 
