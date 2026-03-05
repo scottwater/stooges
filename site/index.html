@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stooges — Git Workspaces, the Smart Way</title>
+  <meta name="description" content="Manage multiple independent copies of your Git repo with near-zero disk overhead. Copy-on-write clones for AI agents, parallel tasks, and fearless context-switching.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Special+Elite&family=IM+Fell+English+SC&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    /* ── Reset & Base ───────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --black: #0a0a0a;
+      --near-black: #1a1a1a;
+      --dark: #2a2a2a;
+      --mid: #666;
+      --light: #b0b0b0;
+      --cream: #e8e0d0;
+      --off-white: #f0ead6;
+      --white: #f5f1e8;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
+      background: var(--near-black);
+      color: var(--cream);
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+
+    /* ── Film grain overlay ─────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      opacity: 0.04;
+      mix-blend-mode: overlay;
+    }
+
+    /* ── Vignette ────────────────────────────────────────────── */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 9998;
+      pointer-events: none;
+      background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.5) 100%);
+    }
+
+    /* ── Film Sprockets (side borders) ──────────────────────── */
+    .film-strip-left,
+    .film-strip-right {
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      width: 38px;
+      background: var(--black);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      padding-top: 10px;
+      overflow: hidden;
+    }
+    .film-strip-left { left: 0; border-right: 2px solid #333; }
+    .film-strip-right { right: 0; border-left: 2px solid #333; }
+    .film-strip-left .sprocket,
+    .film-strip-right .sprocket {
+      width: 18px;
+      height: 12px;
+      border-radius: 3px;
+      background: #222;
+      border: 1px solid #333;
+      flex-shrink: 0;
+    }
+
+    /* ── Main container ─────────────────────────────────────── */
+    .page {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 0 60px;
+      position: relative;
+    }
+
+    /* ── Decorative ornaments ────────────────────────────────── */
+    .ornament {
+      text-align: center;
+      font-size: 1.2rem;
+      color: var(--mid);
+      letter-spacing: 0.6em;
+      margin: 2rem 0;
+      user-select: none;
+    }
+    .ornament-line {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin: 2.5rem 0;
+    }
+    .ornament-line::before,
+    .ornament-line::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--mid), transparent);
+    }
+    .ornament-line span {
+      color: var(--mid);
+      font-size: 1.4rem;
+      flex-shrink: 0;
+    }
+
+    /* ── Hero / Title Card ──────────────────────────────────── */
+    .hero {
+      text-align: center;
+      padding: 5rem 0 3rem;
+      position: relative;
+    }
+
+    .presents {
+      font-family: 'IM Fell English SC', serif;
+      font-size: 0.85rem;
+      letter-spacing: 0.5em;
+      text-transform: uppercase;
+      color: var(--light);
+      margin-bottom: 1rem;
+      opacity: 0.7;
+    }
+
+    .title {
+      font-family: 'Playfair Display', serif;
+      font-weight: 900;
+      font-size: clamp(3.5rem, 10vw, 7rem);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      line-height: 0.95;
+      color: var(--white);
+      text-shadow:
+        2px 2px 0 var(--black),
+        4px 4px 0 rgba(0,0,0,0.3);
+      margin-bottom: 0.5rem;
+    }
+
+    .subtitle-bar {
+      display: inline-block;
+      background: var(--cream);
+      color: var(--black);
+      padding: 0.4rem 2rem;
+      font-family: 'Special Elite', 'Courier New', monospace;
+      font-size: 0.8rem;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      margin: 1.2rem 0;
+    }
+
+    .tagline {
+      font-family: 'Playfair Display', serif;
+      font-style: italic;
+      font-size: 1.25rem;
+      color: var(--light);
+      margin-top: 1rem;
+      max-width: 520px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* ── Stars / Cast ───────────────────────────────────────── */
+    .starring {
+      text-align: center;
+      padding: 2rem 0;
+    }
+    .starring-label {
+      font-family: 'IM Fell English SC', serif;
+      font-size: 0.75rem;
+      letter-spacing: 0.5em;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 1.5rem;
+    }
+    .cast {
+      display: flex;
+      justify-content: center;
+      gap: 3rem;
+      flex-wrap: wrap;
+    }
+    .cast-member {
+      text-align: center;
+    }
+    .cast-member .silhouette {
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      background: var(--dark);
+      border: 2px solid var(--mid);
+      margin: 0 auto 0.8rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.2rem;
+      color: var(--light);
+      position: relative;
+      overflow: hidden;
+    }
+    .cast-member .silhouette::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+    }
+    .cast-name {
+      font-family: 'Playfair Display', serif;
+      font-weight: 700;
+      font-size: 1.3rem;
+      color: var(--cream);
+      letter-spacing: 0.05em;
+    }
+    .cast-role {
+      font-family: 'Special Elite', monospace;
+      font-size: 0.7rem;
+      color: var(--mid);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-top: 0.2rem;
+    }
+
+    /* ── Playbill / "The Picture" section ────────────────────── */
+    .playbill {
+      border: 2px solid var(--mid);
+      padding: 2.5rem 2rem;
+      margin: 2rem 0;
+      position: relative;
+      background: rgba(20,20,20,0.6);
+    }
+    .playbill::before {
+      content: '';
+      position: absolute;
+      inset: 6px;
+      border: 1px solid rgba(150,150,150,0.2);
+      pointer-events: none;
+    }
+    .playbill h2 {
+      font-family: 'Playfair Display', serif;
+      font-weight: 900;
+      font-size: 1.6rem;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      margin-bottom: 1.5rem;
+      color: var(--white);
+    }
+    .playbill p {
+      font-size: 1.05rem;
+      line-height: 1.8;
+      color: var(--cream);
+      text-align: center;
+      max-width: 580px;
+      margin: 0 auto;
+    }
+    .playbill p + p {
+      margin-top: 1rem;
+    }
+
+    /* ── Comparison Table ────────────────────────────────────── */
+    .comparison {
+      margin: 2rem 0;
+      overflow-x: auto;
+    }
+    .comparison table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: 'Special Elite', monospace;
+      font-size: 0.85rem;
+    }
+    .comparison th {
+      font-family: 'Playfair Display', serif;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-size: 0.75rem;
+      padding: 0.8rem 1rem;
+      border-bottom: 2px solid var(--mid);
+      text-align: left;
+      color: var(--light);
+    }
+    .comparison td {
+      padding: 0.7rem 1rem;
+      border-bottom: 1px solid #333;
+      color: var(--cream);
+      vertical-align: top;
+    }
+    .comparison tr:last-child td {
+      border-bottom: 2px solid var(--mid);
+    }
+    .comparison .highlight-row td {
+      color: var(--white);
+      font-weight: 700;
+    }
+    .check { color: var(--cream); }
+    .cross { color: var(--mid); }
+
+    /* ── Feature Reel ───────────────────────────────────────── */
+    .reel-section {
+      padding: 2rem 0;
+    }
+    .reel-title {
+      font-family: 'IM Fell English SC', serif;
+      text-align: center;
+      font-size: 0.8rem;
+      letter-spacing: 0.5em;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 2rem;
+    }
+    .features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+    .feature {
+      border: 1px solid #333;
+      padding: 1.5rem;
+      background: rgba(20,20,20,0.4);
+      position: relative;
+    }
+    .feature::before {
+      content: attr(data-number);
+      position: absolute;
+      top: -0.6rem;
+      left: 1rem;
+      background: var(--near-black);
+      padding: 0 0.5rem;
+      font-family: 'IM Fell English SC', serif;
+      font-size: 0.7rem;
+      color: var(--mid);
+      letter-spacing: 0.2em;
+    }
+    .feature h3 {
+      font-family: 'Playfair Display', serif;
+      font-weight: 700;
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+      color: var(--white);
+    }
+    .feature p {
+      font-size: 0.9rem;
+      color: var(--light);
+      line-height: 1.6;
+    }
+
+    /* ── Command Showcase (Typewriter) ──────────────────────── */
+    .commands-section {
+      padding: 2rem 0;
+    }
+    .command-card {
+      margin-bottom: 1.2rem;
+      display: flex;
+      gap: 1.2rem;
+      align-items: baseline;
+    }
+    .cmd {
+      font-family: 'Courier Prime', 'Courier New', monospace;
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--white);
+      white-space: nowrap;
+      min-width: 180px;
+      text-align: right;
+    }
+    .cmd-desc {
+      font-size: 0.9rem;
+      color: var(--light);
+      border-left: 1px solid #444;
+      padding-left: 1.2rem;
+    }
+
+    /* ── "Now Playing" Install Section ──────────────────────── */
+    .install-section {
+      text-align: center;
+      padding: 3rem 0;
+    }
+    .now-playing {
+      font-family: 'IM Fell English SC', serif;
+      font-size: 0.75rem;
+      letter-spacing: 0.5em;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 1rem;
+    }
+    .install-section h2 {
+      font-family: 'Playfair Display', serif;
+      font-weight: 900;
+      font-size: 2rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 2rem;
+      color: var(--white);
+    }
+    .install-block {
+      background: var(--black);
+      border: 1px solid #444;
+      padding: 1.2rem 1.5rem;
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.95rem;
+      color: var(--cream);
+      display: inline-block;
+      text-align: left;
+      max-width: 100%;
+      position: relative;
+      margin-bottom: 1rem;
+    }
+    .install-block .prompt {
+      color: var(--mid);
+      user-select: none;
+    }
+    .install-or {
+      font-family: 'Playfair Display', serif;
+      font-style: italic;
+      color: var(--mid);
+      margin: 0.8rem 0;
+      font-size: 0.9rem;
+    }
+    .install-cta {
+      display: inline-block;
+      margin-top: 1.5rem;
+      padding: 0.8rem 2.5rem;
+      border: 2px solid var(--cream);
+      color: var(--cream);
+      font-family: 'Playfair Display', serif;
+      font-weight: 700;
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      text-decoration: none;
+      transition: all 0.3s ease;
+      background: transparent;
+    }
+    .install-cta:hover {
+      background: var(--cream);
+      color: var(--black);
+    }
+
+    /* ── Workflow "Scene" ────────────────────────────────────── */
+    .workflow {
+      padding: 1rem 0 2rem;
+    }
+    .scene {
+      position: relative;
+      padding-left: 2.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .scene::before {
+      content: attr(data-scene);
+      position: absolute;
+      left: 0;
+      top: 0;
+      font-family: 'IM Fell English SC', serif;
+      font-size: 0.7rem;
+      color: var(--mid);
+      letter-spacing: 0.1em;
+    }
+    .scene-title {
+      font-family: 'Playfair Display', serif;
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--white);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.3rem;
+    }
+    .scene code {
+      display: block;
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.85rem;
+      color: var(--cream);
+      background: var(--black);
+      padding: 0.5rem 0.8rem;
+      border-left: 2px solid #444;
+      margin-top: 0.3rem;
+    }
+    .scene p {
+      font-size: 0.85rem;
+      color: var(--light);
+      font-style: italic;
+    }
+
+    /* ── Footer / Credits ───────────────────────────────────── */
+    .credits {
+      text-align: center;
+      padding: 3rem 0 5rem;
+      border-top: 1px solid #333;
+    }
+    .credits .end-card {
+      font-family: 'Playfair Display', serif;
+      font-weight: 900;
+      font-size: 2.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--white);
+      margin-bottom: 1rem;
+    }
+    .credits p {
+      font-family: 'Special Elite', monospace;
+      font-size: 0.75rem;
+      color: var(--mid);
+      letter-spacing: 0.2em;
+      line-height: 2;
+    }
+    .credits a {
+      color: var(--light);
+      text-decoration: none;
+      border-bottom: 1px solid var(--mid);
+      transition: color 0.2s;
+    }
+    .credits a:hover {
+      color: var(--white);
+    }
+
+    /* ── Responsive ─────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .film-strip-left, .film-strip-right { width: 24px; }
+      .film-strip-left .sprocket, .film-strip-right .sprocket { width: 12px; height: 8px; }
+      .page { padding: 0 40px; }
+      .features { grid-template-columns: 1fr; }
+      .cast { gap: 1.5rem; }
+      .command-card { flex-direction: column; gap: 0.3rem; }
+      .cmd { text-align: left; min-width: auto; }
+      .cmd-desc { border-left: none; padding-left: 0; border-top: 1px solid #333; padding-top: 0.5rem; }
+    }
+
+    @media (max-width: 480px) {
+      .film-strip-left, .film-strip-right { display: none; }
+      .page { padding: 0 20px; }
+      .playbill { padding: 1.5rem 1rem; }
+      .hero { padding: 3rem 0 2rem; }
+    }
+
+    /* ── Subtle animation ───────────────────────────────────── */
+    @keyframes flicker {
+      0%, 100% { opacity: 1; }
+      92% { opacity: 1; }
+      93% { opacity: 0.8; }
+      94% { opacity: 1; }
+      96% { opacity: 0.9; }
+      97% { opacity: 1; }
+    }
+    .hero { animation: flicker 8s infinite; }
+  </style>
+</head>
+<body>
+
+  <!-- Film strip borders -->
+  <div class="film-strip-left" aria-hidden="true">
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+  </div>
+  <div class="film-strip-right" aria-hidden="true">
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+    <div class="sprocket"></div><div class="sprocket"></div><div class="sprocket"></div>
+  </div>
+
+  <div class="page">
+
+    <!-- ═══ HERO ═══ -->
+    <header class="hero">
+      <p class="presents">Scott Watermasysk presents</p>
+      <h1 class="title">Stooges</h1>
+      <div class="subtitle-bar">Git Workspaces, the Smart Way</div>
+      <p class="tagline">Multiple independent copies of your repository&mdash;with near-zero disk overhead. No stashing. No conflicts. No nonsense.</p>
+    </header>
+
+    <div class="ornament">&#10045; &#10045; &#10045;</div>
+
+    <!-- ═══ STARRING ═══ -->
+    <section class="starring">
+      <p class="starring-label">Starring</p>
+      <div class="cast">
+        <div class="cast-member">
+          <div class="silhouette">L</div>
+          <p class="cast-name">Larry</p>
+          <p class="cast-role">Workspace One</p>
+        </div>
+        <div class="cast-member">
+          <div class="silhouette">C</div>
+          <p class="cast-name">Curly</p>
+          <p class="cast-role">Workspace Two</p>
+        </div>
+        <div class="cast-member">
+          <div class="silhouette">M</div>
+          <p class="cast-name">Moe</p>
+          <p class="cast-role">Workspace Three</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="ornament-line"><span>&#9670;</span></div>
+
+    <!-- ═══ THE PICTURE ═══ -->
+    <section class="playbill">
+      <h2>The Picture</h2>
+      <p>You run an AI coding agent in one workspace. A long test suite in another. A hotfix in a third. Each one a fully independent clone of your repository&mdash;its own <em>.git</em>, its own index, its own branch.</p>
+      <p>And thanks to copy-on-write magic, they share disk blocks with the original. Extra space? Only as files diverge. It's practically free.</p>
+    </section>
+
+    <!-- ═══ COMPARISON ═══ -->
+    <section class="comparison">
+      <table>
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th>Disk Cost</th>
+            <th>Independent?</th>
+            <th>Tooling</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Plain Copies</td>
+            <td>Full duplicate</td>
+            <td class="check">Yes</td>
+            <td>None</td>
+          </tr>
+          <tr>
+            <td>Git Worktrees</td>
+            <td>Shared .git</td>
+            <td class="cross">No &mdash; shared index &amp; locks</td>
+            <td>Built-in</td>
+          </tr>
+          <tr class="highlight-row">
+            <td>Stooges</td>
+            <td>Copy-on-write</td>
+            <td class="check">Yes</td>
+            <td>Full CLI</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <div class="ornament-line"><span>&#10038;</span></div>
+
+    <!-- ═══ FEATURES ═══ -->
+    <section class="reel-section">
+      <p class="reel-title">Feature Presentation</p>
+      <div class="features">
+        <div class="feature" data-number="REEL I">
+          <h3>Copy-on-Write</h3>
+          <p>Workspaces share disk blocks with the original. Extra space used only as files diverge. Near-zero overhead.</p>
+        </div>
+        <div class="feature" data-number="REEL II">
+          <h3>Fully Independent</h3>
+          <p>Each workspace has its own .git directory. No shared lock files. No index conflicts. True isolation.</p>
+        </div>
+        <div class="feature" data-number="REEL III">
+          <h3>Sync &amp; Rebase</h3>
+          <p>Keep all workspaces current with one command. Automatic conflict-free rebasing across every branch.</p>
+        </div>
+        <div class="feature" data-number="REEL IV">
+          <h3>Built for Agents</h3>
+          <p>Run multiple AI coding agents in parallel, each in its own isolated workspace. No stepping on toes.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="ornament-line"><span>&#9670;</span></div>
+
+    <!-- ═══ WORKFLOW ═══ -->
+    <section class="workflow">
+      <p class="reel-title">A Typical Scene</p>
+      <div class="scene" data-scene="I.">
+        <p class="scene-title">Initialize Once</p>
+        <code><span style="color:var(--mid)">$</span> stooges init</code>
+        <p>Sets up the base repo &amp; creates Larry, Curly, and Moe.</p>
+      </div>
+      <div class="scene" data-scene="II.">
+        <p class="scene-title">Add a Workspace</p>
+        <code><span style="color:var(--mid)">$</span> stooges add feature-x -b</code>
+        <p>Creates a new workspace with its own branch. Instant.</p>
+      </div>
+      <div class="scene" data-scene="III.">
+        <p class="scene-title">Work Independently</p>
+        <code><span style="color:var(--mid)">$</span> cd feature-x &amp;&amp; git commit -am "ship it"</code>
+        <p>Each workspace is a full, independent repository.</p>
+      </div>
+      <div class="scene" data-scene="IV.">
+        <p class="scene-title">Keep Everything Current</p>
+        <code><span style="color:var(--mid)">$</span> stooges rebase</code>
+        <p>Syncs base, rebases all workspace branches. Done.</p>
+      </div>
+    </section>
+
+    <div class="ornament-line"><span>&#10038;</span></div>
+
+    <!-- ═══ COMMANDS ═══ -->
+    <section class="commands-section">
+      <p class="reel-title">The Full Repertoire</p>
+      <div class="command-card">
+        <span class="cmd">stooges init</span>
+        <span class="cmd-desc">Set up base repo &amp; default workspaces</span>
+      </div>
+      <div class="command-card">
+        <span class="cmd">stooges add</span>
+        <span class="cmd-desc">Create new workspaces with optional branches</span>
+      </div>
+      <div class="command-card">
+        <span class="cmd">stooges sync</span>
+        <span class="cmd-desc">Fetch &amp; fast-forward the base repo</span>
+      </div>
+      <div class="command-card">
+        <span class="cmd">stooges rebase</span>
+        <span class="cmd-desc">Sync base, then rebase all workspace branches</span>
+      </div>
+      <div class="command-card">
+        <span class="cmd">stooges clean</span>
+        <span class="cmd-desc">Sync &amp; prune stale remote-tracking refs</span>
+      </div>
+      <div class="command-card">
+        <span class="cmd">stooges list</span>
+        <span class="cmd-desc">Show all workspaces with branch &amp; status</span>
+      </div>
+      <div class="command-card">
+        <span class="cmd">stooges doctor</span>
+        <span class="cmd-desc">Check platform support &amp; workspace health</span>
+      </div>
+      <div class="command-card">
+        <span class="cmd">stooges lock/unlock</span>
+        <span class="cmd-desc">Toggle read-only protection on base repo</span>
+      </div>
+    </section>
+
+    <div class="ornament">&#10045; &#10045; &#10045;</div>
+
+    <!-- ═══ INSTALL ═══ -->
+    <section class="install-section">
+      <p class="now-playing">Now Showing</p>
+      <h2>Get the Picture</h2>
+
+      <div class="install-block">
+        <span class="prompt">$ </span>curl -sSL https://raw.githubusercontent.com/scottwater/stooges/main/install.sh | bash
+      </div>
+
+      <p class="install-or">or, with Go&mdash;</p>
+
+      <div class="install-block">
+        <span class="prompt">$ </span>go install github.com/scottwater/stooges/cmd/stooges@latest
+      </div>
+
+      <br>
+      <a href="https://github.com/scottwater/stooges" class="install-cta">View on GitHub</a>
+    </section>
+
+    <div class="ornament-line"><span>&#9670;</span></div>
+
+    <!-- ═══ CREDITS ═══ -->
+    <footer class="credits">
+      <p class="end-card">Fin</p>
+      <p>
+        A <a href="https://github.com/scottwater">Scott Watermasysk</a> production<br>
+        Written in Go &middot; Version 0.78<br>
+        Requires macOS (APFS) or Linux with reflink support<br><br>
+        <span style="font-size:0.65rem; letter-spacing:0.3em;">
+          No stooges were harmed in the making of this software.
+        </span>
+      </p>
+    </footer>
+
+  </div>
+
+</body>
+</html>
