@@ -5,6 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stooges — Git Workspaces, the Smart Way</title>
   <meta name="description" content="Manage multiple independent copies of your Git repo with near-zero disk overhead. Copy-on-write clones for AI agents, parallel tasks, and fearless context-switching.">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Stooges — Git Workspaces, the Smart Way">
+  <meta property="og:description" content="Multiple independent copies of your repository — with near-zero disk overhead. No stashing. No conflicts. No nonsense.">
+  <meta property="og:image" content="https://stooges.scottw.com/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:url" content="https://stooges.scottw.com/">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Stooges — Git Workspaces, the Smart Way">
+  <meta name="twitter:description" content="Multiple independent copies of your repository — with near-zero disk overhead. No stashing. No conflicts. No nonsense.">
+  <meta name="twitter:image" content="https://stooges.scottw.com/twitter-card.png">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Special+Elite&family=IM+Fell+English+SC&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
@@ -209,6 +225,13 @@
       color: var(--light);
       position: relative;
       overflow: hidden;
+    }
+    .cast-member .silhouette img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+      filter: grayscale(1) contrast(1.1);
     }
     .cast-member .silhouette::after {
       content: '';
@@ -607,17 +630,17 @@
       <p class="starring-label">Starring</p>
       <div class="cast">
         <div class="cast-member">
-          <div class="silhouette">L</div>
+          <div class="silhouette"><img src="larry.png" alt="Larry"></div>
           <p class="cast-name">Larry</p>
           <p class="cast-role">Workspace One</p>
         </div>
         <div class="cast-member">
-          <div class="silhouette">C</div>
+          <div class="silhouette"><img src="curly.png" alt="Curly"></div>
           <p class="cast-name">Curly</p>
           <p class="cast-role">Workspace Two</p>
         </div>
         <div class="cast-member">
-          <div class="silhouette">M</div>
+          <div class="silhouette"><img src="moe.png" alt="Moe"></div>
           <p class="cast-name">Moe</p>
           <p class="cast-role">Workspace Three</p>
         </div>
