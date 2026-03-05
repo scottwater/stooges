@@ -442,10 +442,36 @@
       max-width: 100%;
       position: relative;
       margin-bottom: 1rem;
+      overflow-wrap: break-word;
+      word-break: break-all;
+    }
+    .install-block[data-copy] {
+      cursor: pointer;
     }
     .install-block .prompt {
       color: var(--mid);
       user-select: none;
+    }
+    .copy-toast {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(1rem);
+      background: var(--cream);
+      color: var(--black);
+      font-family: 'Special Elite', monospace;
+      font-size: 0.8rem;
+      letter-spacing: 0.15em;
+      padding: 0.6rem 1.5rem;
+      border-radius: 4px;
+      opacity: 0;
+      transition: opacity 0.3s, transform 0.3s;
+      z-index: 10000;
+      pointer-events: none;
+    }
+    .copy-toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
     }
     .install-or {
       font-family: 'Playfair Display', serif;
@@ -788,13 +814,13 @@
       <p class="now-playing">Now Showing</p>
       <h2>Get the Picture</h2>
 
-      <div class="install-block">
+      <div class="install-block" data-copy="curl -sSL https://raw.githubusercontent.com/scottwater/stooges/main/install.sh | bash">
         <span class="prompt">$ </span>curl -sSL https://raw.githubusercontent.com/scottwater/stooges/main/install.sh | bash
       </div>
 
       <p class="install-or">or, with Go&mdash;</p>
 
-      <div class="install-block">
+      <div class="install-block" data-copy="go install github.com/scottwater/stooges/cmd/stooges@latest">
         <span class="prompt">$ </span>go install github.com/scottwater/stooges/cmd/stooges@latest
       </div>
 
@@ -818,6 +844,19 @@
     </footer>
 
   </div>
+
+  <div class="copy-toast" id="copy-toast">Copied to clipboard</div>
+
+  <script>
+    document.querySelectorAll('.install-block[data-copy]').forEach(function(block) {
+      block.addEventListener('click', function() {
+        navigator.clipboard.writeText(block.dataset.copy);
+        var toast = document.getElementById('copy-toast');
+        toast.classList.add('show');
+        setTimeout(function() { toast.classList.remove('show'); }, 1500);
+      });
+    });
+  </script>
 
 </body>
 </html>
