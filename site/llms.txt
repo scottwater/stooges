@@ -1,0 +1,190 @@
+# Stooges
+
+> Non-interactive CLI reference for AI coding agents.
+
+Stooges creates fully independent, copy-on-write repo clones that share disk blocks with the original and only use extra space as files diverge. It is an alternative to git worktrees that avoids shared index/lock file issues.
+
+## Install
+
+```bash
+curl -sSL https://raw.githubusercontent.com/scottwater/stooges/main/install.sh | bash
+```
+
+Or with Go:
+
+```bash
+go install github.com/scottwater/stooges/cmd/stooges@latest
+```
+
+## Key Concepts
+
+- **Base repo (`.stooges/`)**: The original repo contents, locked read-only. Never edit directly.
+- **Workspaces**: Copy-on-write clones that sit as sibling directories. Each is a fully independent git repo.
+- **Default workspaces**: `larry`, `curly`, `moe` (created by `init` unless overridden).
+
+## Directory Layout
+
+After `stooges init`, the project directory looks like:
+
+```
+myproject/
+├── .stooges/    ← original repo, locked read-only
+├── larry/       ← independent clone workspace
+├── curly/       ← independent clone workspace
+└── moe/         ← independent clone workspace
+```
+
+Each workspace is a full git repo. You can cd into it, edit, commit, push, and run tests independently.
+
+## Non-Interactive Commands
+
+All commands below run without prompts when the noted flags are used. Every command must be run from the workspace root (the parent directory containing `.stooges/`), unless otherwise noted.
+
+### Check Platform Support
+
+```bash
+stooges doctor
+stooges doctor --json
+```
+
+Checks: git availability, copy-on-write clone support, workspace validity. Use `--json` for machine-readable output.
+
+### Print Version
+
+```bash
+stooges version
+stooges --version
+```
+
+### Initialize Workspace Layout
+
+```bash
+stooges init --confirm
+stooges init --confirm --workspace agent1 --workspace agent2
+stooges init --confirm -m master
+stooges init --confirm --agents larry,moe
+```
+
+Run from inside a git repo. Requires a clean working tree. The `--confirm` flag skips the interactive confirmation prompt.
+
+- Moves repo contents into `.stooges/` and locks it read-only.
+- Creates workspace clones as sibling directories.
+- `--workspace <name>` (repeatable) overrides the default workspace names.
+- `--agents <comma-separated>` is an alternative to multiple `--workspace` flags.
+- `-m <branch>` / `--main-branch <branch>` sets the base branch (default: `main`, also accepts `master`).
+
+### Create Workspaces
+
+```bash
+stooges add moe
+stooges add feature-x -b
+stooges add feature-x --branch custom-branch-name
+stooges add feature-x --track origin-branch-name
+stooges add feature-x --track origin-branch-name --branch local-name
+stooges add --source base
+```
+
+- `stooges add <name>` creates one workspace. Fails if it already exists.
+- `stooges add` (no name) creates only missing defaults (`larry`, `curly`, `moe`).
+- `-b` / `--branch` (no value) creates a branch named after the workspace.
+- `--branch <name>` creates or checks out the named branch.
+- `--track <branch>` checks out a local branch tracking `origin/<branch>`. Requires explicit workspace name.
+- `--source <workspace>` clones from a specific workspace instead of base (default: base).
+
+### Sync Base Repo
+
+```bash
+stooges sync
+```
+
+Fetches latest from remote into `.stooges/`, pulls fast-forward-only, and relocks.
+
+### Sync and Prune Stale Refs
+
+```bash
+stooges clean
+```
+
+Same as `sync` but also prunes stale remote-tracking references.
+
+### Rebase Workspaces
+
+```bash
+stooges rebase
+stooges rebase --prune
+```
+
+Syncs the base repo first, then rebases all workspace branches onto the base branch. Skips dirty workspaces and workspaces already on the base branch. If a conflict occurs, aborts the rebase and reports the workspace. `--prune` adds remote ref pruning (like `clean`).
+
+### List Workspaces
+
+```bash
+stooges list
+stooges ls
+```
+
+Shows base and all managed workspaces with current branch, short HEAD SHA, and latest commit subject. Can run from workspace subdirectories.
+
+### Unlock / Lock Base Repo
+
+```bash
+stooges unlock
+stooges lock
+```
+
+Temporarily toggles read-only protection on `.stooges/` for manual edits. Always re-lock after.
+
+### Tear Down (Undo)
+
+```bash
+stooges undo --yes
+```
+
+Destructive. Reverses `init`: removes workspace clones, moves `.stooges/` back to project root. The `--yes` flag skips the interactive confirmation. Requires all repos to have clean git status.
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Unknown error |
+| 2 | Invalid input |
+| 3 | Unsupported platform |
+| 4 | Preflight failure |
+| 5 | Git failure |
+| 6 | Filesystem failure |
+| 7 | Rollback failure |
+
+## Typical Agent Workflow
+
+```bash
+# 1. Initialize (once, from inside the repo)
+stooges init --confirm
+
+# 2. Create a workspace for a task
+stooges add my-task -b
+
+# 3. Work inside the workspace
+cd my-task
+# ... edit, test, commit, push ...
+
+# 4. Keep up to date
+cd ..
+stooges rebase
+
+# 5. Clean up when done
+cd ..
+trash my-task
+
+# 6. Tear down entirely when no longer needed
+stooges undo --yes
+```
+
+## Important Notes
+
+- All commands require `git` to be in PATH.
+- Copy-on-write cloning requires APFS (macOS) or a reflink-capable filesystem (Linux). Run `stooges doctor` to verify.
+- `init` requires a clean git working tree (no uncommitted changes).
+- Workspaces are never overwritten. `add` fails if the target directory exists.
+- `sync`, `clean`, `unlock`, and `lock` only operate on the `.stooges/` base repo.
+- Run `stooges doctor` to diagnose any issues.
