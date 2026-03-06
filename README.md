@@ -113,6 +113,7 @@ If you need to manually edit the base repo (e.g., resolve something), use `stoog
 ```bash
 stooges doctor             # check platform support
 stooges --version          # print installed version
+stooges upgrade            # replace current binary with latest release
 stooges                    # guided interactive mode
 stooges init               # initialize workspace layout
 
@@ -143,7 +144,14 @@ stooges undo --yes         # tear down workspace layout (destructive)
 - `undo` (alias: `remove`) — tear down and restore original layout
 - `doctor` — check platform support and workspace health
 - `version` (or `--version`) — print installed version
+- `upgrade` — install the latest GitHub release over the current binary
 - no args — interactive mode
+
+When a newer release exists, Stooges prints a one-line upgrade notice at most once per 24 hours:
+
+```text
+Update available: v0.79 (installed v0.78). Run: stooges upgrade
+```
 
 ## Documentation
 

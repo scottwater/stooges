@@ -15,7 +15,7 @@ This prevents behavior drift between guided and automated usage.
 - `internal/cli`
   - Cobra command tree.
   - Flag parsing and output formatting only.
-  - Includes non-engine metadata command (`version` / `--version`).
+  - Includes non-engine metadata commands (`version` / `--version`, `upgrade`, release notice checks).
 - `internal/interactive`
   - Text menu router.
   - Confirmation/dry-run-style previews.
@@ -56,6 +56,7 @@ No overwrite path exists in `add`; existing targets are not replaced.
 - `stooges undo` / `stooges remove` -> `Service.Undo`
 - `stooges doctor` -> `Service.Doctor`
 - `stooges version` / `stooges --version` -> `internal/version.Value` (no engine call)
+- `stooges upgrade` -> GitHub release check + binary replacement (no engine call)
 - `stooges` (no args) -> interactive menu -> same service methods
 
 ## Testing Strategy

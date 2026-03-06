@@ -9,6 +9,7 @@ import (
 	"github.com/scottwater/stooges/internal/cli"
 	"github.com/scottwater/stooges/internal/engine"
 	apperrors "github.com/scottwater/stooges/internal/errors"
+	"github.com/scottwater/stooges/internal/update"
 )
 
 func main() {
@@ -16,7 +17,7 @@ func main() {
 	defer stop()
 
 	svc := engine.NewService()
-	cmd := cli.NewRootCmd(svc, cli.Streams{})
+	cmd := cli.NewRootCmdWithUpdater(svc, cli.Streams{}, update.NewManager())
 	if err := cmd.ExecuteContext(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(apperrors.ExitCode(err))

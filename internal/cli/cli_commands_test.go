@@ -3,10 +3,12 @@ package cli
 import (
 	"bytes"
 	"context"
+	"io"
 	"strings"
 	"testing"
 
 	"github.com/scottwater/stooges/internal/model"
+	"github.com/scottwater/stooges/internal/update"
 	"github.com/scottwater/stooges/internal/version"
 )
 
@@ -84,6 +86,30 @@ func (f *fakeService) PreviewInitBranch(context.Context) (string, error) {
 		return "main", nil
 	}
 	return f.preview, nil
+}
+
+type fakeUpdater struct {
+	maybeNotifyCalled int
+	upgradeCalled     bool
+	lastVersion       string
+	notifyText        string
+	upgradeResult     update.UpgradeResult
+	upgradeErr        error
+}
+
+func (f *fakeUpdater) MaybeNotify(_ context.Context, out io.Writer, currentVersion string) error {
+	f.maybeNotifyCalled++
+	f.lastVersion = currentVersion
+	if f.notifyText != "" {
+		_, _ = io.WriteString(out, f.notifyText)
+	}
+	return nil
+}
+
+func (f *fakeUpdater) Upgrade(_ context.Context, currentVersion string) (update.UpgradeResult, error) {
+	f.upgradeCalled = true
+	f.lastVersion = currentVersion
+	return f.upgradeResult, f.upgradeErr
 }
 
 func TestAddSubcommandDispatches(t *testing.T) {
@@ -379,5 +405,56 @@ func TestCommandsUseCmdContext(t *testing.T) {
 	}
 	if svc.lastCtx.Err() == nil {
 		t.Fatalf("expected cancelled context to propagate, got %#v", svc.lastCtx)
+	}
+}
+
+func TestSubcommandPrintsUpdateNoticeToErrOut(t *testing.T) {
+	svc := &fakeService{}
+	updater := &fakeUpdater{notifyText: "Update available: v0.79\n"}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmdWithUpdater(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut}, updater)
+	cmd.SetArgs([]string{"list"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if updater.maybeNotifyCalled != 1 {
+		t.Fatalf("expected MaybeNotify once, got %d", updater.maybeNotifyCalled)
+	}
+	if !strings.Contains(errOut.String(), "Update available: v0.79") {
+		t.Fatalf("expected update notice on stderr, got %q", errOut.String())
+	}
+}
+
+func TestUpgradeCommandSkipsPassiveNotice(t *testing.T) {
+	svc := &fakeService{}
+	updater := &fakeUpdater{
+		notifyText: "should not print\n",
+		upgradeResult: update.UpgradeResult{
+			CurrentVersion: version.Value,
+			LatestVersion:  "v0.79",
+			ExecutablePath: "/tmp/stooges",
+		},
+	}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmdWithUpdater(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut}, updater)
+	cmd.SetArgs([]string{"upgrade"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if updater.maybeNotifyCalled != 0 {
+		t.Fatalf("expected passive notice to be skipped, got %d calls", updater.maybeNotifyCalled)
+	}
+	if !updater.upgradeCalled {
+		t.Fatal("expected upgrade command to call updater")
+	}
+	if strings.Contains(errOut.String(), "should not print") {
+		t.Fatalf("did not expect stderr notice during upgrade, got %q", errOut.String())
+	}
+	if !strings.Contains(out.String(), "upgraded stooges from") {
+		t.Fatalf("expected upgrade output, got %q", out.String())
 	}
 }

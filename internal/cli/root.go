@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/scottwater/stooges/internal/engine"
 	"github.com/scottwater/stooges/internal/interactive"
+	"github.com/scottwater/stooges/internal/update"
 	"github.com/scottwater/stooges/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -18,6 +20,32 @@ type Streams struct {
 }
 
 func NewRootCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
+	return newRootCmd(svc, streams, noopUpdater{})
+}
+
+func NewRootCmdWithUpdater(svc engine.WorkspaceService, streams Streams, updaterClient Updater) *cobra.Command {
+	if updaterClient == nil {
+		updaterClient = noopUpdater{}
+	}
+	return newRootCmd(svc, streams, updaterClient)
+}
+
+type Updater interface {
+	MaybeNotify(ctx context.Context, out io.Writer, currentVersion string) error
+	Upgrade(ctx context.Context, currentVersion string) (update.UpgradeResult, error)
+}
+
+type noopUpdater struct{}
+
+func (noopUpdater) MaybeNotify(context.Context, io.Writer, string) error {
+	return nil
+}
+
+func (noopUpdater) Upgrade(context.Context, string) (update.UpgradeResult, error) {
+	return update.UpgradeResult{}, fmt.Errorf("upgrade unavailable")
+}
+
+func newRootCmd(svc engine.WorkspaceService, streams Streams, updaterClient Updater) *cobra.Command {
 	var showVersion bool
 
 	if streams.In == nil {
@@ -35,6 +63,12 @@ func NewRootCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 		Short:         "Unified AFS workspace CLI",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+			if cmd.Name() == "upgrade" {
+				return
+			}
+			_ = updaterClient.MaybeNotify(cmd.Context(), streams.ErrOut, version.Value)
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if showVersion {
 				fmt.Fprintln(streams.Out, version.Value)
@@ -56,6 +90,7 @@ func NewRootCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	root.AddCommand(newUndoCmd(svc, streams))
 	root.AddCommand(newDoctorCmd(svc, streams))
 	root.AddCommand(newVersionCmd(streams))
+	root.AddCommand(newUpgradeCmd(streams, updaterClient))
 
 	return root
 }

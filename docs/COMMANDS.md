@@ -14,6 +14,8 @@ stooges
 
 Shows preflight status first, then guided actions for `init`, `add`, `sync`, `clean`, `unlock`, `lock`, `rebase`, `undo`, `doctor`.
 
+All commands except `upgrade` perform a best-effort GitHub release check and print an update notice to stderr at most once per 24 hours.
+
 ## `init`
 
 ```bash
@@ -183,7 +185,19 @@ stooges --version
 ```
 
 Behavior:
-- Prints installed CLI version (currently `0.76`).
+- Prints installed CLI version.
+
+## `upgrade`
+
+```bash
+stooges upgrade
+```
+
+Behavior:
+- Queries GitHub Releases for the latest tagged version.
+- Compares the latest tag against the installed CLI version.
+- If newer, downloads the matching release archive for the current OS/arch and replaces the current executable in place.
+- If already current, prints the latest version and exits without modifying the binary.
 
 ## Exit Codes
 
