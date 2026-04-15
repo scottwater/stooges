@@ -190,7 +190,7 @@ stooges undo --yes
 
 - All commands require `git` to be in PATH.
 - Copy-on-write cloning requires APFS (macOS) or a reflink-capable filesystem (Linux). Run `stooges doctor` to verify.
-- `init` requires a clean git working tree (no uncommitted changes).
+- `init` requires the selected base branch to already be checked out and no unstaged changes. Staged changes are allowed, and git-ignored files are ignored as usual.
 - Workspaces are never overwritten. `add` fails if the target directory exists.
 - `sync`, `clean`, `unlock`, and `lock` only operate on the `.stooges/` base repo.
 - Run `stooges doctor` to diagnose any issues.

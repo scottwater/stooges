@@ -574,6 +574,13 @@ func (s *Service) Init(ctx context.Context, opts model.InitOptions) (res model.I
 	if !branchExists {
 		return model.InitResult{}, apperrors.New(apperrors.KindInvalidInput, fmt.Sprintf("branch %q does not exist in repo; pass --main-branch with a valid branch", mainBranch))
 	}
+	currentBranch, err := s.git.CurrentBranch(ctx, repoRoot)
+	if err != nil {
+		return model.InitResult{}, err
+	}
+	if strings.TrimSpace(currentBranch) != mainBranch {
+		return model.InitResult{}, apperrors.New(apperrors.KindInvalidInput, fmt.Sprintf("init requires the selected base branch %q to be checked out before creating the hidden, locked base repo in .stooges; currently on %q", mainBranch, strings.TrimSpace(currentBranch)))
+	}
 	layout.MainBranch = mainBranch
 
 	workspaces := model.NormalizeAgents(opts.Agents)
@@ -593,8 +600,8 @@ func (s *Service) Init(ctx context.Context, opts model.InitOptions) (res model.I
 	if err != nil {
 		return model.InitResult{}, err
 	}
-	if strings.TrimSpace(status) != "" {
-		return model.InitResult{}, apperrors.New(apperrors.KindInvalidInput, "init requires a clean git repo; commit/stash changes before locking")
+	if hasUnstagedChanges(status) {
+		return model.InitResult{}, apperrors.New(apperrors.KindInvalidInput, "init requires no unstaged git changes before creating the hidden, locked base repo in .stooges; stage/commit/stash or remove unstaged changes first (ignored files are fine)")
 	}
 
 	movedEntries := make([]string, 0)
@@ -676,4 +683,19 @@ func isGitRepoPath(path string) bool {
 func pathExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func hasUnstagedChanges(status string) bool {
+	for _, line := range strings.Split(status, "\n") {
+		if len(line) < 2 {
+			continue
+		}
+		if line[0] == '?' && line[1] == '?' {
+			return true
+		}
+		if line[1] != ' ' {
+			return true
+		}
+	}
+	return false
 }

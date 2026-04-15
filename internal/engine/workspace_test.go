@@ -795,7 +795,7 @@ func TestInitAllowsMainBranchOverride(t *testing.T) {
 	mustWriteFile(t, filepath.Join(repo, "README.md"), []byte("hello"))
 	git := &fakeGit{
 		topLevel:           repo,
-		currentBranch:      "feature-x",
+		currentBranch:      "master",
 		branchExistsByName: map[string]bool{"master": true, "main": false},
 	}
 
@@ -817,6 +817,33 @@ func TestInitAllowsMainBranchOverride(t *testing.T) {
 	}
 }
 
+func TestInitRejectsWhenCheckedOutBranchDoesNotMatchSelectedMainBranch(t *testing.T) {
+	parent := t.TempDir()
+	repo := filepath.Join(parent, "project")
+	mustMkdirAll(t, filepath.Join(repo, ".git"))
+	mustWriteFile(t, filepath.Join(repo, "README.md"), []byte("hello"))
+	git := &fakeGit{
+		topLevel:           repo,
+		currentBranch:      "feature-x",
+		branchExistsByName: map[string]bool{"main": true},
+	}
+
+	svc := newTestService(t, repo, git)
+	_, err := svc.Init(context.Background(), model.InitOptions{})
+	if err == nil {
+		t.Fatal("expected init error")
+	}
+	if !apperrors.IsKind(err, apperrors.KindInvalidInput) {
+		t.Fatalf("expected invalid input error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), `selected base branch "main"`) || !strings.Contains(err.Error(), `currently on "feature-x"`) {
+		t.Fatalf("expected branch mismatch guidance, got %v", err)
+	}
+	if pathExists(filepath.Join(repo, ".stooges")) {
+		t.Fatal("expected no .stooges directory when init is blocked")
+	}
+}
+
 func TestInitRejectsUnsupportedMainBranchOverride(t *testing.T) {
 	parent := t.TempDir()
 	repo := filepath.Join(parent, "project")
@@ -830,7 +857,7 @@ func TestInitRejectsUnsupportedMainBranchOverride(t *testing.T) {
 	}
 }
 
-func TestInitFailsWhenRepoDirty(t *testing.T) {
+func TestInitFailsWhenRepoHasUnstagedChanges(t *testing.T) {
 	parent := t.TempDir()
 	repo := filepath.Join(parent, "project")
 	mustMkdirAll(t, filepath.Join(repo, ".git"))
@@ -851,11 +878,60 @@ func TestInitFailsWhenRepoDirty(t *testing.T) {
 	if !apperrors.IsKind(err, apperrors.KindInvalidInput) {
 		t.Fatalf("expected invalid input error, got %v", err)
 	}
+	if !strings.Contains(err.Error(), "no unstaged git changes") || !strings.Contains(err.Error(), "ignored files are fine") {
+		t.Fatalf("expected unstaged-change guidance, got %v", err)
+	}
 	if !pathExists(filepath.Join(repo, ".git")) {
 		t.Fatal("expected repo unchanged when init is blocked")
 	}
 	if pathExists(filepath.Join(repo, ".stooges")) {
 		t.Fatal("expected no .stooges directory when init is blocked")
+	}
+}
+
+func TestInitAllowsStagedChanges(t *testing.T) {
+	parent := t.TempDir()
+	repo := filepath.Join(parent, "project")
+	mustMkdirAll(t, filepath.Join(repo, ".git"))
+	mustWriteFile(t, filepath.Join(repo, "README.md"), []byte("hello"))
+	git := &fakeGit{
+		topLevel:      repo,
+		currentBranch: "main",
+		statusByRepo: map[string]string{
+			repo: "M  README.md\n",
+		},
+	}
+
+	svc := newTestService(t, repo, git)
+	res, err := svc.Init(context.Background(), model.InitOptions{Agents: []string{"larry"}})
+	if err != nil {
+		t.Fatalf("expected staged-only changes to be allowed, got %v", err)
+	}
+	if res.BaseDir != filepath.Join(repo, ".stooges") {
+		t.Fatalf("expected init to complete, got %#v", res)
+	}
+}
+
+func TestHasUnstagedChanges(t *testing.T) {
+	cases := []struct {
+		name   string
+		status string
+		want   bool
+	}{
+		{name: "empty", status: "", want: false},
+		{name: "staged only", status: "M  README.md\nA  foo.txt\n", want: false},
+		{name: "unstaged modified", status: " M README.md\n", want: true},
+		{name: "staged and unstaged", status: "MM README.md\n", want: true},
+		{name: "untracked", status: "?? scratch.txt\n", want: true},
+		{name: "ignored not shown", status: "", want: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := hasUnstagedChanges(tc.status); got != tc.want {
+				t.Fatalf("hasUnstagedChanges(%q) = %v, want %v", tc.status, got, tc.want)
+			}
+		})
 	}
 }
 

@@ -82,6 +82,8 @@ myproject/              myproject/
 2. The `.stooges` directory is locked read-only (so you don't accidentally edit the base)
 3. Three default workspaces are created as copy-on-write clones
 
+`init` must be run while you are already checked out on the branch you want to treat as the base (`main` by default, or `master` via `--main-branch`). It also requires no unstaged changes before it creates the hidden `.stooges` directory; staged changes are fine, and git-ignored files are ignored as usual. This avoids locking an unexpected branch into the hidden `.stooges` directory.
+
 If you don't want the defaults, specify your own with `--workspace`:
 
 ```bash

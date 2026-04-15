@@ -24,7 +24,8 @@ stooges init [--main-branch <name>|-m <name>] [--workspace <name> ...] [--agents
 
 Behavior:
 - Must run from inside a git repo.
-- Requires a clean repo (`git status --porcelain` must be empty) before lock/move.
+- Requires no unstaged repo changes before lock/move. Staged changes are allowed. Git-ignored files are ignored as usual.
+- The selected base branch must already be the currently checked out branch before init runs.
 - Uses `main` as default base branch.
 - If your default branch is `master`, pass `--main-branch` / `-m master`.
 - Only `main` (default) and `master` are supported.
