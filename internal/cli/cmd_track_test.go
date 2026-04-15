@@ -27,3 +27,9 @@ func TestDeriveTrackWorkspaceName_RejectsReservedName(t *testing.T) {
 		t.Fatal("expected reserved-name error")
 	}
 }
+
+func TestDeriveBranchWorkspaceName_RejectsReservedName(t *testing.T) {
+	if _, err := deriveBranchWorkspaceName("feature/base"); err == nil {
+		t.Fatal("expected reserved-name error")
+	}
+}

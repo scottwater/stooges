@@ -243,6 +243,39 @@ func TestTrackCommandWithBranchOverridePassesBoth(t *testing.T) {
 	}
 }
 
+func TestBranchCommandDerivesWorkspaceFromLastBranchSegment(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"branch", "scott/aud-656"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if !svc.makeCalled {
+		t.Fatal("expected branch to call workspace make operation")
+	}
+	if svc.lastMake.Agent != "aud-656" || svc.lastMake.Branch != "scott/aud-656" || svc.lastMake.Track != "" || svc.lastMake.BranchAuto {
+		t.Fatalf("expected derived workspace aud-656 with explicit branch, got %#v", svc.lastMake)
+	}
+}
+
+func TestBranchCommandSanitizesWorkspaceWhenBranchHasNoSlash(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"branch", "release candidate: 2026-04-15 !!!"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if svc.lastMake.Agent != "release-candidate-2026-04-15" || svc.lastMake.Branch != "release candidate: 2026-04-15 !!!" {
+		t.Fatalf("expected sanitized workspace name and original branch, got %#v", svc.lastMake)
+	}
+}
+
 func TestAddWritesCDTargetForShellIntegration(t *testing.T) {
 	svc := &fakeService{}
 	out := &bytes.Buffer{}

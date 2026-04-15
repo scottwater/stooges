@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const maxDerivedTrackWorkspaceLen = 50
+const maxDerivedWorkspaceLen = 50
 
 func newTrackCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	var source string
@@ -77,6 +77,21 @@ func deriveTrackWorkspaceName(track string) (string, error) {
 	if trimmed == "" {
 		return "", fmt.Errorf("track branch cannot be empty")
 	}
+	derived := deriveWorkspaceName(trimmed)
+	if derived == "" {
+		return "", fmt.Errorf("could not derive a workspace name from track branch %q", trimmed)
+	}
+	if derived == "base" {
+		return "", fmt.Errorf("derived workspace name %q is reserved; choose a branch with a different suffix or use `stooges add <workspace> --track %s`", derived, trimmed)
+	}
+	return derived, nil
+}
+
+func deriveWorkspaceName(input string) string {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return ""
+	}
 
 	candidate := trimmed
 	if strings.Contains(trimmed, "/") {
@@ -91,15 +106,7 @@ func deriveTrackWorkspaceName(track string) (string, error) {
 			break
 		}
 	}
-
-	derived := sanitizeDerivedWorkspaceName(candidate)
-	if derived == "" {
-		return "", fmt.Errorf("could not derive a workspace name from track branch %q", trimmed)
-	}
-	if derived == "base" {
-		return "", fmt.Errorf("derived workspace name %q is reserved; choose a branch with a different suffix or use `stooges add <workspace> --track %s`", derived, trimmed)
-	}
-	return derived, nil
+	return sanitizeDerivedWorkspaceName(candidate)
 }
 
 func sanitizeDerivedWorkspaceName(input string) string {
@@ -112,7 +119,7 @@ func sanitizeDerivedWorkspaceName(input string) string {
 	outLen := 0
 	lastWasSeparator := false
 	for _, r := range trimmed {
-		if outLen >= maxDerivedTrackWorkspaceLen {
+		if outLen >= maxDerivedWorkspaceLen {
 			break
 		}
 		switch {

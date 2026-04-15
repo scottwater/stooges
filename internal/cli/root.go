@@ -82,6 +82,7 @@ func newRootCmd(svc engine.WorkspaceService, streams Streams, updaterClient Upda
 	root.AddCommand(newInitCmd(svc, streams))
 	root.AddCommand(newMakeCmd(svc, streams))
 	root.AddCommand(newTrackCmd(svc, streams))
+	root.AddCommand(newBranchCmd(svc, streams))
 	root.AddCommand(newSyncCmd(svc, streams))
 	root.AddCommand(newCleanCmd(svc, streams))
 	root.AddCommand(newListCmd(svc, streams))

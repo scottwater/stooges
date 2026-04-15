@@ -66,7 +66,7 @@ Behavior:
 - `--track` cannot be combined with `-b` (auto branch naming).
 - If all defaults exist, no-op with guidance message.
 - Never overwrites existing directories.
-- With shell integration enabled via `eval "$(stooges shell-init zsh)"` (or `bash`), `add` automatically `cd`s into the newly created workspace when exactly one workspace is created.
+- With shell integration enabled via `eval "$(stooges shell-init zsh)"` (or `bash`), `add` automatically `cd`s into the newly created workspace when exactly one workspace is created. The same auto-`cd` behavior applies to `branch` and `track`.
 - `--no-cd` disables that redirect for a single invocation.
 
 Examples:
@@ -78,6 +78,28 @@ stooges add bob -b
 stooges add bob --branch not_bob
 stooges add bob --track feature/foo
 stooges add bob --track feature/foo --branch local-foo
+```
+
+## `branch`
+
+```bash
+stooges branch <branch> [--source <workspace>] [--no-cd]
+```
+
+Behavior:
+- Convenience wrapper for `stooges add <derived-workspace> -b <branch>`.
+- Derives workspace name from the last non-empty `/`-separated branch segment.
+- When the branch has no `/`, derives the workspace from the first 50 sanitized characters.
+- Sanitization keeps letters, digits, `-`, and `_`, and collapses other characters into `-`.
+- Fails when derivation produces an empty name or reserved `base`.
+- The provided branch name is used verbatim as the local branch to create or switch to in the new workspace.
+- Workspace collisions still fail normally, so `scott/foo` and `team/foo` will both try to use workspace `foo`.
+
+Examples:
+
+```bash
+stooges branch scott/aud-656
+stooges branch "release candidate: 2026-04-15"
 ```
 
 ## `track`
@@ -211,9 +233,9 @@ stooges shell-init [bash|zsh|sh]
 
 Behavior:
 - Prints a shell wrapper function.
-- After `eval "$(stooges shell-init zsh)"`, successful `stooges add <workspace>` commands automatically `cd` into the created workspace.
-- Uses the resolved workspace root, so calling `stooges add` from inside another managed workspace still lands in the new workspace root path.
-- `--no-cd` on `add` suppresses the redirect.
+- After `eval "$(stooges shell-init zsh)"`, successful single-workspace `stooges add`, `stooges branch`, and `stooges track` commands automatically `cd` into the created workspace.
+- Uses the resolved workspace root, so calling these commands from inside another managed workspace still lands in the new workspace root path.
+- `--no-cd` on `add`, `branch`, or `track` suppresses the redirect.
 
 ## `version`
 
