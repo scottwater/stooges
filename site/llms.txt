@@ -81,6 +81,7 @@ stooges add feature-x -b
 stooges add feature-x --branch custom-branch-name
 stooges add feature-x --track origin-branch-name
 stooges add feature-x --track origin-branch-name --branch local-name
+stooges track feature/foo
 stooges add --source base
 ```
 
@@ -89,6 +90,8 @@ stooges add --source base
 - `-b` / `--branch` (no value) creates a branch named after the workspace.
 - `--branch <name>` creates or checks out the named branch.
 - `--track <branch>` checks out a local branch tracking `origin/<branch>`. Requires explicit workspace name.
+- `stooges track <branch>` is a convenience wrapper around `stooges add <derived-name> --track <branch>`.
+- `track` derives the workspace from the branch suffix (last non-empty `/` segment), or from the first 50 sanitized characters when there is no `/`.
 - `--source <workspace>` clones from a specific workspace instead of base (default: base).
 - Optional shell integration can auto-`cd` into the new workspace after successful single-workspace `stooges add` runs.
 - Setup example: `eval "$(stooges shell-init zsh)"` (or `bash`).
@@ -169,6 +172,8 @@ stooges init --confirm
 
 # 3. Create a workspace for a task
 stooges add my-task -b
+# or derive one from a remote branch name
+stooges track feature/my-task
 
 # 4. Work inside the workspace
 # if shell integration is disabled: cd my-task

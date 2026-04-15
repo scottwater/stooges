@@ -81,6 +81,7 @@ func newRootCmd(svc engine.WorkspaceService, streams Streams, updaterClient Upda
 	root.Flags().BoolVar(&showVersion, "version", false, "Print installed version")
 	root.AddCommand(newInitCmd(svc, streams))
 	root.AddCommand(newMakeCmd(svc, streams))
+	root.AddCommand(newTrackCmd(svc, streams))
 	root.AddCommand(newSyncCmd(svc, streams))
 	root.AddCommand(newCleanCmd(svc, streams))
 	root.AddCommand(newListCmd(svc, streams))

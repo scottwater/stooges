@@ -145,6 +145,7 @@ stooges add bob -b         # create workspace + branch named "bob"
 stooges add bob --branch x # create workspace + branch named "x"
 stooges add bob --track feature/foo              # track origin/feature/foo
 stooges add bob --track feature/foo --branch foo # local "foo" tracking origin/feature/foo
+stooges track feature/foo                         # derive workspace "foo" and track origin/feature/foo
 
 stooges sync               # sync base repo from remote
 stooges clean              # sync + prune stale refs
@@ -158,6 +159,7 @@ stooges undo --yes         # tear down workspace layout (destructive)
 
 - `init` — initialize the workspace layout
 - `add` — create workspaces
+- `track` — create a tracked workspace using a derived workspace name
 - `sync` — fetch & update the base repo
 - `clean` — sync + prune stale remote-tracking refs
 - `rebase` — sync base + rebase workspace branches

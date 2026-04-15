@@ -80,6 +80,29 @@ stooges add bob --track feature/foo
 stooges add bob --track feature/foo --branch local-foo
 ```
 
+## `track`
+
+```bash
+stooges track <branch> [--source <workspace>] [--branch [name]|-b[name]] [--no-cd]
+```
+
+Behavior:
+- Convenience wrapper for `stooges add <derived-workspace> --track <branch>`.
+- Derives workspace name from the last non-empty `/`-separated branch segment.
+- When the branch has no `/`, derives the workspace from the first 50 sanitized characters.
+- Sanitization keeps letters, digits, `-`, and `_`, and collapses other characters into `-`.
+- Fails when derivation produces an empty name or reserved `base`.
+- `--branch <name>` still controls the local git branch name; without it, the local branch defaults to the tracked branch, same as `add --track`.
+- Workspace collisions still fail normally, so `feature/foo` and `bug/foo` will both try to use workspace `foo`.
+
+Examples:
+
+```bash
+stooges track feature/foo
+stooges track feature/foo --branch local-foo
+stooges track "release candidate: 2026-04-15"
+```
+
 ## `sync`
 
 ```bash

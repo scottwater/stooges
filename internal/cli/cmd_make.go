@@ -11,12 +11,27 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const autoBranchSentinel = "__stooges_auto_branch__"
+
+func resolveBranchSelection(cmd *cobra.Command, args []string, branch string) (branchName string, branchAuto bool) {
+	branchChanged := cmd.Flags().Changed("branch")
+	branchValue := branch
+	if len(args) == 2 && branchChanged && branch == autoBranchSentinel {
+		branchValue = strings.TrimSpace(args[1])
+	}
+	branchAuto = branchChanged && (branchValue == autoBranchSentinel || strings.TrimSpace(branchValue) == "")
+	branchName = strings.TrimSpace(branchValue)
+	if branchName == autoBranchSentinel {
+		branchName = ""
+	}
+	return branchName, branchAuto
+}
+
 func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	var source string
 	var branch string
 	var track string
 	var noCD bool
-	const autoBranchSentinel = "__stooges_auto_branch__"
 
 	cmd := &cobra.Command{
 		Use:   "add [workspace]",
@@ -25,8 +40,7 @@ func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 			if len(args) <= 1 {
 				return nil
 			}
-			branchChanged := cmd.Flags().Changed("branch")
-			if len(args) == 2 && branchChanged {
+			if len(args) == 2 && cmd.Flags().Changed("branch") {
 				return nil
 			}
 			return fmt.Errorf("accepts at most 1 arg(s), received %d", len(args))
@@ -36,19 +50,7 @@ func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 			if len(args) >= 1 {
 				workspace = args[0]
 			}
-			branchChanged := cmd.Flags().Changed("branch")
-			branchValue := branch
-			if len(args) == 2 && branchChanged && branch == autoBranchSentinel {
-				branchValue = strings.TrimSpace(args[1])
-			}
-			branchAuto := branchChanged && (branchValue == autoBranchSentinel || strings.TrimSpace(branchValue) == "")
-			branchName := strings.TrimSpace(branch)
-			if branchValue != "" {
-				branchName = strings.TrimSpace(branchValue)
-			}
-			if branchName == autoBranchSentinel {
-				branchName = ""
-			}
+			branchName, branchAuto := resolveBranchSelection(cmd, args, branch)
 			result, err := svc.Make(cmd.Context(), model.MakeOptions{
 				Agent:      workspace,
 				Source:     source,

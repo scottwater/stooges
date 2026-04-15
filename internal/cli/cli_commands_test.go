@@ -195,6 +195,54 @@ func TestAddTrackFlagWithBranchOverridePassesBoth(t *testing.T) {
 	}
 }
 
+func TestTrackCommandDerivesWorkspaceFromLastBranchSegment(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"track", "feature/foo"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if !svc.makeCalled {
+		t.Fatal("expected track to call workspace make operation")
+	}
+	if svc.lastMake.Agent != "foo" || svc.lastMake.Track != "feature/foo" {
+		t.Fatalf("expected derived workspace foo tracking feature/foo, got %#v", svc.lastMake)
+	}
+}
+
+func TestTrackCommandSanitizesWorkspaceWhenTrackHasNoSlash(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"track", "release candidate: 2026-04-15 !!!"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if svc.lastMake.Agent != "release-candidate-2026-04-15" {
+		t.Fatalf("expected sanitized workspace name, got %#v", svc.lastMake)
+	}
+}
+
+func TestTrackCommandWithBranchOverridePassesBoth(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"track", "feature/foo", "--branch", "local-foo"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if svc.lastMake.Agent != "foo" || svc.lastMake.Track != "feature/foo" || svc.lastMake.Branch != "local-foo" || svc.lastMake.BranchAuto {
+		t.Fatalf("expected derived workspace + branch override, got %#v", svc.lastMake)
+	}
+}
+
 func TestAddWritesCDTargetForShellIntegration(t *testing.T) {
 	svc := &fakeService{}
 	out := &bytes.Buffer{}

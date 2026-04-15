@@ -754,12 +754,12 @@
       <div class="scene" data-scene="II.">
         <p class="scene-title">Add a Workspace</p>
         <code><span style="color:var(--mid)">$</span> stooges add feature-x -b</code>
-        <p>Creates a new workspace with its own branch. Instant.</p>
+        <p>Creates a new workspace with its own branch. Or use <code>stooges track feature/x</code> to derive the workspace name from a remote branch.</p>
       </div>
       <div class="scene" data-scene="III.">
         <p class="scene-title">Work Independently</p>
         <code><span style="color:var(--mid)">$</span> cd feature-x &amp;&amp; git commit -am "ship it"</code>
-        <p>Or enable the optional shell wrapper and <code>stooges add</code> can drop you in automatically.</p>
+        <p>Or enable the optional shell wrapper and <code>stooges add</code> or <code>stooges track</code> can drop you in automatically.</p>
       </div>
       <div class="scene" data-scene="IV.">
         <p class="scene-title">Keep Everything Current</p>
@@ -773,6 +773,11 @@
     <!-- ═══ COMMANDS ═══ -->
     <section class="commands-section">
       <p class="reel-title">The Full Repertoire</p>
+      <div class="scene" data-scene="EX.">
+        <p class="scene-title">Track Example</p>
+        <code><span style="color:var(--mid)">$</span> stooges track feature/foo</code>
+        <p>Derives workspace <code>foo</code> and checks out a local branch tracking <code>origin/feature/foo</code>.</p>
+      </div>
       <div class="command-card">
         <span class="cmd">stooges init</span>
         <span class="cmd-desc">Set up base repo &amp; default workspaces</span>
@@ -780,6 +785,10 @@
       <div class="command-card">
         <span class="cmd">stooges add</span>
         <span class="cmd-desc">Create new workspaces with optional branches</span>
+      </div>
+      <div class="command-card">
+        <span class="cmd">stooges track</span>
+        <span class="cmd-desc">Create a tracked workspace from a remote branch name</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges sync</span>
@@ -803,7 +812,7 @@
       </div>
       <div class="command-card">
         <span class="cmd">stooges shell-init</span>
-        <span class="cmd-desc">Optional shell wrapper for auto-cd after add</span>
+        <span class="cmd-desc">Optional shell wrapper for auto-cd after add/track</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges upgrade</span>
@@ -834,7 +843,7 @@
 
       <p class="install-or">Already installed? Run <code>stooges upgrade</code> to grab the latest release.</p>
 
-      <p class="install-or">Optional: enable auto-cd after <code>stooges add</code> by adding this to your shell profile:</p>
+      <p class="install-or">Optional: enable auto-cd after <code>stooges add</code> or <code>stooges track</code> by adding this to your shell profile:</p>
 
       <div class="install-block" data-copy="eval &quot;$(stooges shell-init zsh)&quot;">
         <span class="prompt">$ </span>eval "$(stooges shell-init zsh)"
