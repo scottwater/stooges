@@ -82,6 +82,7 @@ stooges add feature-x --branch custom-branch-name
 stooges add feature-x --track origin-branch-name
 stooges add feature-x --track origin-branch-name --branch local-name
 stooges branch scott/aud-656
+stooges fork scott/aud-656
 stooges track feature/foo
 stooges add --source base
 ```
@@ -92,10 +93,12 @@ stooges add --source base
 - `--branch <name>` creates or checks out the named branch.
 - `--track <branch>` checks out a local branch tracking `origin/<branch>`. Requires explicit workspace name.
 - `stooges branch <branch>` is a convenience wrapper around `stooges add <derived-name> -b <branch>`.
+- `stooges fork <branch>` is a convenience wrapper around `stooges add <derived-name> --source <current-workspace> --branch <branch>`.
 - `stooges track <branch>` is a convenience wrapper around `stooges add <derived-name> --track <branch>`.
-- `branch` and `track` derive the workspace from the branch suffix (last non-empty `/` segment), or from the first 50 sanitized characters when there is no `/`.
+- `branch`, `fork`, and `track` derive the workspace from the branch suffix (last non-empty `/` segment), or from the first 50 sanitized characters when there is no `/`.
+- `fork` must run from inside a managed workspace and copies that workspace's current state, including ordinary dirty/untracked changes.
 - `--source <workspace>` clones from a specific workspace instead of base (default: base).
-- Optional shell integration can auto-`cd` into the new workspace after successful single-workspace `stooges add`, `stooges branch`, or `stooges track` runs.
+- Optional shell integration can auto-`cd` into the new workspace after successful single-workspace `stooges add`, `stooges branch`, `stooges fork`, or `stooges track` runs.
 - Setup example: `eval "$(stooges shell-init zsh)"` (or `bash`).
 - This is optional; without it, users can just `cd <workspace>` manually.
 
@@ -176,6 +179,8 @@ stooges init --confirm
 stooges add my-task -b
 # or derive one from a branch name
 stooges branch scott/my-task
+# or fork your current workspace into a new branch-shaped workspace
+stooges fork scott/my-task
 # or derive one from a remote branch name
 stooges track feature/my-task
 

@@ -754,12 +754,12 @@
       <div class="scene" data-scene="II.">
         <p class="scene-title">Add a Workspace</p>
         <code><span style="color:var(--mid)">$</span> stooges add feature-x -b</code>
-        <p>Creates a new workspace with its own branch. Or use <code>stooges branch scott/aud-656</code> or <code>stooges track feature/x</code> to derive the workspace name automatically.</p>
+        <p>Creates a new workspace with its own branch. Or use <code>stooges branch scott/aud-656</code>, <code>stooges fork scott/aud-656</code>, or <code>stooges track feature/x</code> to derive the workspace name automatically.</p>
       </div>
       <div class="scene" data-scene="III.">
         <p class="scene-title">Work Independently</p>
         <code><span style="color:var(--mid)">$</span> cd feature-x &amp;&amp; git commit -am "ship it"</code>
-        <p>Or enable the optional shell wrapper and <code>stooges add</code>, <code>stooges branch</code>, or <code>stooges track</code> can drop you in automatically.</p>
+        <p>Or enable the optional shell wrapper and <code>stooges add</code>, <code>stooges branch</code>, <code>stooges fork</code>, or <code>stooges track</code> can drop you in automatically.</p>
       </div>
       <div class="scene" data-scene="IV.">
         <p class="scene-title">Keep Everything Current</p>
@@ -779,6 +779,11 @@
         <p>Derives workspace <code>aud-656</code> and creates or switches local branch <code>scott/aud-656</code>.</p>
       </div>
       <div class="scene" data-scene="EY.">
+        <p class="scene-title">Fork Example</p>
+        <code><span style="color:var(--mid)">$</span> cd larry &amp;&amp; stooges fork scott/aud-656</code>
+        <p>Copies the current managed workspace state into <code>aud-656</code> and creates or switches local branch <code>scott/aud-656</code>.</p>
+      </div>
+      <div class="scene" data-scene="EZ.">
         <p class="scene-title">Track Example</p>
         <code><span style="color:var(--mid)">$</span> stooges track feature/foo</code>
         <p>Derives workspace <code>foo</code> and checks out a local branch tracking <code>origin/feature/foo</code>.</p>
@@ -794,6 +799,10 @@
       <div class="command-card">
         <span class="cmd">stooges branch</span>
         <span class="cmd-desc">Create a workspace from a branch name</span>
+      </div>
+      <div class="command-card">
+        <span class="cmd">stooges fork</span>
+        <span class="cmd-desc">Copy the current workspace into a new branched workspace</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges track</span>
@@ -821,7 +830,7 @@
       </div>
       <div class="command-card">
         <span class="cmd">stooges shell-init</span>
-        <span class="cmd-desc">Optional shell wrapper for auto-cd after add/branch/track</span>
+        <span class="cmd-desc">Optional shell wrapper for auto-cd after add/branch/fork/track</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges upgrade</span>
@@ -852,7 +861,7 @@
 
       <p class="install-or">Already installed? Run <code>stooges upgrade</code> to grab the latest release.</p>
 
-      <p class="install-or">Optional: enable auto-cd after <code>stooges add</code>, <code>stooges branch</code>, or <code>stooges track</code> by adding this to your shell profile:</p>
+      <p class="install-or">Optional: enable auto-cd after <code>stooges add</code>, <code>stooges branch</code>, <code>stooges fork</code>, or <code>stooges track</code> by adding this to your shell profile:</p>
 
       <div class="install-block" data-copy="eval &quot;$(stooges shell-init zsh)&quot;">
         <span class="prompt">$ </span>eval "$(stooges shell-init zsh)"

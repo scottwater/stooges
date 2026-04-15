@@ -335,6 +335,53 @@ func TestMakeFromWorkspaceSubdirReportsWorkspaceRoot(t *testing.T) {
 	}
 }
 
+func TestResolveCurrentWorkspaceFromManagedWorkspaceSubdir(t *testing.T) {
+	workspace := t.TempDir()
+	mustSetupConfiguredWorkspace(t, workspace, "main", "larry")
+	subdir := filepath.Join(workspace, "larry", "pkg", "api")
+	mustMkdirAll(t, subdir)
+	git := &fakeGit{topLevel: filepath.Join(workspace, "larry")}
+	svc := NewServiceWithDeps(Dependencies{
+		CWD:            func() (string, error) { return subdir, nil },
+		Chdir:          func(string) error { return nil },
+		Cloner:         fakeCloner{},
+		Perms:          &fakePerms{},
+		Git:            git,
+		Preflight:      NewPreflightChecker(fakeCloner{}),
+		Resolver:       NewRepoResolver(git),
+		BranchDetector: NewBranchDetector(git),
+	})
+
+	res, err := svc.ResolveCurrentWorkspace(context.Background())
+	if err != nil {
+		t.Fatalf("resolve current workspace failed: %v", err)
+	}
+	if res.Name != "larry" || res.Path != filepath.Join(workspace, "larry") || res.WorkspaceRoot != workspace {
+		t.Fatalf("unexpected current workspace: %#v", res)
+	}
+}
+
+func TestResolveCurrentWorkspaceRejectsBaseRepo(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main", "larry")
+	git := &fakeGit{topLevel: layout.BaseRepoPath}
+	svc := NewServiceWithDeps(Dependencies{
+		CWD:            func() (string, error) { return layout.BaseRepoPath, nil },
+		Chdir:          func(string) error { return nil },
+		Cloner:         fakeCloner{},
+		Perms:          &fakePerms{},
+		Git:            git,
+		Preflight:      NewPreflightChecker(fakeCloner{}),
+		Resolver:       NewRepoResolver(git),
+		BranchDetector: NewBranchDetector(git),
+	})
+
+	_, err := svc.ResolveCurrentWorkspace(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "fork cannot run from the base repo") {
+		t.Fatalf("expected base repo error, got %v", err)
+	}
+}
+
 func TestMakeNoAgentCreatesMissingOnly(t *testing.T) {
 	workspace := t.TempDir()
 	mustSetupConfiguredWorkspace(t, workspace, "main", "larry")

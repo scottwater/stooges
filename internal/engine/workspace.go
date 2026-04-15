@@ -55,6 +55,12 @@ type Service struct {
 	branchDetector *BranchDetector
 }
 
+type CurrentWorkspace struct {
+	Name          string
+	Path          string
+	WorkspaceRoot string
+}
+
 type gitignoreInspector interface {
 	IgnoredPatternsWithMatches(context.Context, string) ([]string, error)
 }
@@ -92,6 +98,34 @@ func NewServiceWithDeps(deps Dependencies) *Service {
 		resolver:       deps.Resolver,
 		branchDetector: deps.BranchDetector,
 	}
+}
+
+func (s *Service) ResolveCurrentWorkspace(ctx context.Context) (CurrentWorkspace, error) {
+	cwd, err := s.cwd()
+	if err != nil {
+		return CurrentWorkspace{}, apperrors.Wrap(apperrors.KindFilesystemFailure, "resolve current working directory", err)
+	}
+	workspaceRoot, layout, err := resolveWorkspaceAndLayout(cwd)
+	if err != nil {
+		return CurrentWorkspace{}, err
+	}
+	if filepath.Clean(cwd) == filepath.Clean(workspaceRoot) {
+		return CurrentWorkspace{}, apperrors.New(apperrors.KindInvalidInput, "fork must run from inside a managed workspace, not the workspace root")
+	}
+	repoRoot, err := s.git.TopLevel(ctx, cwd)
+	if err != nil {
+		return CurrentWorkspace{}, apperrors.New(apperrors.KindInvalidInput, "fork must run from inside a managed workspace")
+	}
+	if filepath.Clean(repoRoot) == filepath.Clean(layout.BaseRepoPath) {
+		return CurrentWorkspace{}, apperrors.New(apperrors.KindInvalidInput, "fork cannot run from the base repo; run it from inside a managed workspace")
+	}
+	for _, workspace := range layout.ManagedWorkspaces {
+		workspacePath := filepath.Join(layout.WorkspaceRoot, workspace)
+		if filepath.Clean(repoRoot) == filepath.Clean(workspacePath) {
+			return CurrentWorkspace{Name: workspace, Path: workspacePath, WorkspaceRoot: workspaceRoot}, nil
+		}
+	}
+	return CurrentWorkspace{}, apperrors.New(apperrors.KindInvalidInput, "fork must run from inside a managed workspace")
 }
 
 func (s *Service) PreviewInitBranch(ctx context.Context) (string, error) {

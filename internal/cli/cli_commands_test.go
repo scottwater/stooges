@@ -8,23 +8,26 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/scottwater/stooges/internal/engine"
 	"github.com/scottwater/stooges/internal/model"
 	"github.com/scottwater/stooges/internal/update"
 	"github.com/scottwater/stooges/internal/version"
 )
 
 type fakeService struct {
-	initCalled   bool
-	makeCalled   bool
-	doctorCalled bool
-	lockCalled   bool
-	listCalled   bool
-	rebaseCalled bool
-	undoCalled   bool
-	lastCtx      context.Context
-	lastInit     model.InitOptions
-	lastMake     model.MakeOptions
-	preview      string
+	initCalled                 bool
+	makeCalled                 bool
+	doctorCalled               bool
+	lockCalled                 bool
+	listCalled                 bool
+	rebaseCalled               bool
+	undoCalled                 bool
+	lastCtx                    context.Context
+	lastInit                   model.InitOptions
+	lastMake                   model.MakeOptions
+	preview                    string
+	currentWorkspace           engine.CurrentWorkspace
+	resolveCurrentWorkspaceErr error
 }
 
 func (f *fakeService) Init(ctx context.Context, opts model.InitOptions) (model.InitResult, error) {
@@ -91,6 +94,16 @@ func (f *fakeService) PreviewInitBranch(context.Context) (string, error) {
 		return "main", nil
 	}
 	return f.preview, nil
+}
+
+func (f *fakeService) ResolveCurrentWorkspace(context.Context) (engine.CurrentWorkspace, error) {
+	if f.resolveCurrentWorkspaceErr != nil {
+		return engine.CurrentWorkspace{}, f.resolveCurrentWorkspaceErr
+	}
+	if strings.TrimSpace(f.currentWorkspace.Name) == "" {
+		return engine.CurrentWorkspace{Name: "larry", Path: "/tmp/workspace/larry", WorkspaceRoot: "/tmp/workspace"}, nil
+	}
+	return f.currentWorkspace, nil
 }
 
 type fakeUpdater struct {
@@ -273,6 +286,39 @@ func TestBranchCommandSanitizesWorkspaceWhenBranchHasNoSlash(t *testing.T) {
 	}
 	if svc.lastMake.Agent != "release-candidate-2026-04-15" || svc.lastMake.Branch != "release candidate: 2026-04-15 !!!" {
 		t.Fatalf("expected sanitized workspace name and original branch, got %#v", svc.lastMake)
+	}
+}
+
+func TestForkCommandUsesCurrentWorkspaceAsSource(t *testing.T) {
+	svc := &fakeService{currentWorkspace: engine.CurrentWorkspace{Name: "larry", Path: t.TempDir(), WorkspaceRoot: "/tmp/workspace"}}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"fork", "scott/aud-656"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if !svc.makeCalled {
+		t.Fatal("expected fork to call workspace make operation")
+	}
+	if svc.lastMake.Agent != "aud-656" || svc.lastMake.Source != "larry" || svc.lastMake.Branch != "scott/aud-656" || svc.lastMake.Track != "" || svc.lastMake.BranchAuto {
+		t.Fatalf("expected derived workspace aud-656 from current workspace source, got %#v", svc.lastMake)
+	}
+}
+
+func TestForkCommandSanitizesWorkspaceWhenBranchHasNoSlash(t *testing.T) {
+	svc := &fakeService{currentWorkspace: engine.CurrentWorkspace{Name: "larry", Path: t.TempDir(), WorkspaceRoot: "/tmp/workspace"}}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"fork", "release candidate: 2026-04-15 !!!"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if svc.lastMake.Agent != "release-candidate-2026-04-15" || svc.lastMake.Source != "larry" || svc.lastMake.Branch != "release candidate: 2026-04-15 !!!" {
+		t.Fatalf("expected sanitized workspace name and current workspace source, got %#v", svc.lastMake)
 	}
 }
 

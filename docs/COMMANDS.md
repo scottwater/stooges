@@ -66,7 +66,7 @@ Behavior:
 - `--track` cannot be combined with `-b` (auto branch naming).
 - If all defaults exist, no-op with guidance message.
 - Never overwrites existing directories.
-- With shell integration enabled via `eval "$(stooges shell-init zsh)"` (or `bash`), `add` automatically `cd`s into the newly created workspace when exactly one workspace is created. The same auto-`cd` behavior applies to `branch` and `track`.
+- With shell integration enabled via `eval "$(stooges shell-init zsh)"` (or `bash`), `add` automatically `cd`s into the newly created workspace when exactly one workspace is created. The same auto-`cd` behavior applies to `branch`, `fork`, and `track`.
 - `--no-cd` disables that redirect for a single invocation.
 
 Examples:
@@ -100,6 +100,32 @@ Examples:
 ```bash
 stooges branch scott/aud-656
 stooges branch "release candidate: 2026-04-15"
+```
+
+## `fork`
+
+```bash
+stooges fork <branch> [--no-cd]
+```
+
+Behavior:
+- Convenience wrapper for `stooges add <derived-workspace> --source <current-workspace> --branch <branch>`.
+- Must run from inside a managed workspace (including its subdirectories), not from the workspace root or base repo.
+- Clones the current managed workspace rather than `.stooges`, so the new workspace starts from the current workspace state instead of main.
+- Derives workspace name from the last non-empty `/`-separated branch segment.
+- When the branch has no `/`, derives the workspace from the first 50 sanitized characters.
+- Sanitization keeps letters, digits, `-`, and `_`, and collapses other characters into `-`.
+- Fails when derivation produces an empty name or reserved `base`.
+- Allows normal dirty/untracked changes in the source workspace to come along for the copy.
+- Refuses to run when the source workspace has an in-progress merge, rebase, cherry-pick, revert, sequencer operation, or git index lock.
+- Workspace collisions still fail normally, so `scott/foo` and `team/foo` will both try to use workspace `foo`.
+
+Examples:
+
+```bash
+cd larry
+stooges fork scott/aud-656
+stooges fork "release candidate: 2026-04-15"
 ```
 
 ## `track`
@@ -233,9 +259,9 @@ stooges shell-init [bash|zsh|sh]
 
 Behavior:
 - Prints a shell wrapper function.
-- After `eval "$(stooges shell-init zsh)"`, successful single-workspace `stooges add`, `stooges branch`, and `stooges track` commands automatically `cd` into the created workspace.
+- After `eval "$(stooges shell-init zsh)"`, successful single-workspace `stooges add`, `stooges branch`, `stooges fork`, and `stooges track` commands automatically `cd` into the created workspace.
 - Uses the resolved workspace root, so calling these commands from inside another managed workspace still lands in the new workspace root path.
-- `--no-cd` on `add`, `branch`, or `track` suppresses the redirect.
+- `--no-cd` on `add`, `branch`, `fork`, or `track` suppresses the redirect.
 
 ## `version`
 

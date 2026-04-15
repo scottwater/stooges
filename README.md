@@ -112,8 +112,9 @@ trash feature-x
 
 You can add a new workspace at any time with `stooges add`. The `-b` flag creates a branch named after the workspace, or use `--branch name` for a specific branch name.
 Use `stooges branch <branch>` to derive the workspace name from the branch suffix and create/switch that local branch automatically.
+Use `stooges fork <branch>` from inside a managed workspace to copy that workspace, keep its current changes, and then create/switch the requested local branch in the new copy.
 Use `--track <branch>` to track `origin/<branch>` in a newly created workspace (optionally with `--branch <local-name>`), or use `stooges track <branch>` to derive the workspace name automatically.
-If you optionally enable `eval "$(stooges shell-init zsh)"` (or `bash`), `stooges add`, `stooges branch`, and `stooges track` will automatically `cd` into the new workspace; pass `--no-cd` to stay where you are.
+If you optionally enable `eval "$(stooges shell-init zsh)"` (or `bash`), `stooges add`, `stooges branch`, `stooges fork`, and `stooges track` will automatically `cd` into the new workspace; pass `--no-cd` to stay where you are.
 
 ## Keeping in sync
 
@@ -136,7 +137,7 @@ If you need to manually edit the base repo (e.g., resolve something), use `stoog
 stooges doctor             # check platform support
 stooges --version          # print installed version
 stooges upgrade            # replace current binary with latest release
-stooges shell-init zsh     # optional: print shell wrapper for auto-cd on add/branch/track
+stooges shell-init zsh     # optional: print shell wrapper for auto-cd on add/branch/fork/track
 stooges                    # guided interactive mode
 stooges init               # initialize workspace layout
 
@@ -147,6 +148,7 @@ stooges add bob --branch x # create workspace + branch named "x"
 stooges add bob --track feature/foo              # track origin/feature/foo
 stooges add bob --track feature/foo --branch foo # local "foo" tracking origin/feature/foo
 stooges branch scott/aud-656                      # derive workspace "aud-656" and create/switch branch scott/aud-656
+stooges fork scott/aud-656                        # from inside a managed workspace, copy it and branch from that current state
 stooges track feature/foo                         # derive workspace "foo" and track origin/feature/foo
 
 stooges sync               # sync base repo from remote
@@ -162,6 +164,7 @@ stooges undo --yes         # tear down workspace layout (destructive)
 - `init` — initialize the workspace layout
 - `add` — create workspaces
 - `branch` — create a workspace using a derived name and an explicit local branch
+- `fork` — copy the current managed workspace into a new derived workspace and branch from there
 - `track` — create a tracked workspace using a derived workspace name
 - `sync` — fetch & update the base repo
 - `clean` — sync + prune stale remote-tracking refs
@@ -170,7 +173,7 @@ stooges undo --yes         # tear down workspace layout (destructive)
 - `unlock` / `lock` — toggle read-only protection on the base
 - `undo` (alias: `remove`) — tear down and restore original layout
 - `doctor` — check platform support and workspace health
-- `shell-init` — print shell wrapper for auto-cd on `add`, `branch`, and `track`
+- `shell-init` — print shell wrapper for auto-cd on `add`, `branch`, `fork`, and `track`
 - `version` (or `--version`) — print installed version
 - `upgrade` — install the latest GitHub release over the current binary
 - no args — interactive mode
