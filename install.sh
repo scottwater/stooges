@@ -74,6 +74,15 @@ main() {
 
   echo ""
   echo "Run '${BINARY} --version' to verify installation."
+
+  local current_shell
+  current_shell=$(basename "${SHELL:-}")
+  case "${current_shell}" in
+    bash|zsh)
+      echo "Optional: enable auto-cd after '${BINARY} add':"
+      echo "  eval \"\$(${BINARY} shell-init ${current_shell})\""
+      ;;
+  esac
 }
 
 main

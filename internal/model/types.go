@@ -87,8 +87,9 @@ type InitResult struct {
 }
 
 type MakeResult struct {
-	Created  []string
-	Guidance string
+	Created       []string
+	Guidance      string
+	WorkspaceRoot string
 }
 
 type SyncResult struct {

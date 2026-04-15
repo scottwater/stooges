@@ -47,6 +47,24 @@ stooges init
 
 You can also just run `stooges` with no arguments for an interactive guided mode.
 
+### Optional: auto-cd after `stooges add`
+
+This feature is optional.
+
+By default, the `stooges` binary cannot change your current shell directory on its own, so if you want `stooges add <workspace>` to automatically drop you into the new workspace, enable the shell wrapper once in your shell profile:
+
+```bash
+# zsh
+
+eval "$(stooges shell-init zsh)"
+
+# bash
+
+eval "$(stooges shell-init bash)"
+```
+
+After that, successful single-workspace `stooges add` commands will automatically `cd` into the created workspace. Pass `--no-cd` any time you want to stay where you are.
+
 ### What `init` does
 
 Running `stooges init` inside your repo restructures the directory:
@@ -78,8 +96,8 @@ Changed your mind? `stooges undo` puts everything back the way it was.
 # create a new workspace with its own branch
 stooges add feature-x -b
 
-# work normally inside it
-cd feature-x
+# with shell integration enabled, you're dropped into feature-x automatically
+# otherwise: cd feature-x
 # edit, commit, push — it's a full independent repo
 
 # keep workspaces up to date with your base branch
@@ -92,6 +110,7 @@ trash feature-x
 
 You can add a new workspace at any time with `stooges add`. The `-b` flag creates a branch named after the workspace, or use `--branch name` for a specific branch name.
 Use `--track <branch>` to track `origin/<branch>` in a newly created workspace (optionally with `--branch <local-name>`).
+If you optionally enable `eval "$(stooges shell-init zsh)"` (or `bash`), `stooges add <workspace>` will automatically `cd` into the new workspace; pass `--no-cd` to stay where you are.
 
 ## Keeping in sync
 
@@ -114,6 +133,7 @@ If you need to manually edit the base repo (e.g., resolve something), use `stoog
 stooges doctor             # check platform support
 stooges --version          # print installed version
 stooges upgrade            # replace current binary with latest release
+stooges shell-init zsh     # optional: print shell wrapper for auto-cd on add
 stooges                    # guided interactive mode
 stooges init               # initialize workspace layout
 
@@ -143,6 +163,7 @@ stooges undo --yes         # tear down workspace layout (destructive)
 - `unlock` / `lock` — toggle read-only protection on the base
 - `undo` (alias: `remove`) — tear down and restore original layout
 - `doctor` — check platform support and workspace health
+- `shell-init` — print shell wrapper for auto-cd on `add`
 - `version` (or `--version`) — print installed version
 - `upgrade` — install the latest GitHub release over the current binary
 - no args — interactive mode

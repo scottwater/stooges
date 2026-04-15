@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/scottwater/stooges/internal/engine"
@@ -13,6 +15,7 @@ func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	var source string
 	var branch string
 	var track string
+	var noCD bool
 	const autoBranchSentinel = "__stooges_auto_branch__"
 
 	cmd := &cobra.Command{
@@ -56,6 +59,9 @@ func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := writeAddCDTarget(result, noCD); err != nil {
+				fmt.Fprintf(streams.ErrOut, "warning: unable to persist add cd target: %v\n", err)
+			}
 			if len(result.Created) > 0 {
 				fmt.Fprintf(streams.Out, "created: %s\n", strings.Join(result.Created, ", "))
 			}
@@ -69,8 +75,21 @@ func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	cmd.Flags().StringVar(&source, "source", "base", "Source workspace name (default: base/.stooges)")
 	cmd.Flags().StringVar(&track, "track", "", "Track remote branch in new workspace (fails when origin/<branch> is missing)")
 	cmd.Flags().StringVarP(&branch, "branch", "b", "", "Optional branch to checkout/create in new workspace (`-b` uses workspace name)")
+	cmd.Flags().BoolVar(&noCD, "no-cd", false, "Stay in the current directory even when shell integration is enabled")
 	if branchFlag := cmd.Flags().Lookup("branch"); branchFlag != nil {
 		branchFlag.NoOptDefVal = autoBranchSentinel
 	}
 	return cmd
+}
+
+func writeAddCDTarget(result model.MakeResult, noCD bool) error {
+	if noCD || len(result.Created) != 1 || strings.TrimSpace(result.WorkspaceRoot) == "" {
+		return nil
+	}
+	targetFile := strings.TrimSpace(os.Getenv("STOOGES_CD_FILE"))
+	if targetFile == "" {
+		return nil
+	}
+	targetDir := filepath.Join(result.WorkspaceRoot, result.Created[0])
+	return os.WriteFile(targetFile, []byte(targetDir), 0o600)
 }

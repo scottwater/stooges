@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -37,7 +38,11 @@ func (f *fakeService) Make(ctx context.Context, opts model.MakeOptions) (model.M
 	f.makeCalled = true
 	f.lastCtx = ctx
 	f.lastMake = opts
-	return model.MakeResult{Created: []string{"larry"}}, nil
+	created := "larry"
+	if strings.TrimSpace(opts.Agent) != "" {
+		created = strings.TrimSpace(opts.Agent)
+	}
+	return model.MakeResult{Created: []string{created}, WorkspaceRoot: "/tmp/workspace"}, nil
 }
 func (f *fakeService) Sync(ctx context.Context, _ model.SyncOptions) (model.SyncResult, error) {
 	f.lastCtx = ctx
@@ -187,6 +192,59 @@ func TestAddTrackFlagWithBranchOverridePassesBoth(t *testing.T) {
 	}
 	if svc.lastMake.Track != "feature/foo" || svc.lastMake.Branch != "local-foo" || svc.lastMake.BranchAuto {
 		t.Fatalf("expected track + branch passthrough, got %#v", svc.lastMake)
+	}
+}
+
+func TestAddWritesCDTargetForShellIntegration(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cdFile := t.TempDir() + "/cd-target"
+	t.Setenv("STOOGES_CD_FILE", cdFile)
+	cmd.SetArgs([]string{"add", "bob"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	data, err := os.ReadFile(cdFile)
+	if err != nil {
+		t.Fatalf("read cd file: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "/tmp/workspace/bob" {
+		t.Fatalf("expected cd target /tmp/workspace/bob, got %q", got)
+	}
+}
+
+func TestAddNoCDSkipsShellIntegrationTarget(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cdFile := t.TempDir() + "/cd-target"
+	t.Setenv("STOOGES_CD_FILE", cdFile)
+	cmd.SetArgs([]string{"add", "bob", "--no-cd"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if _, err := os.Stat(cdFile); !os.IsNotExist(err) {
+		t.Fatalf("expected no cd target file, got err=%v", err)
+	}
+}
+
+func TestShellInitCommandPrintsWrapper(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: &bytes.Buffer{}})
+	cmd.SetArgs([]string{"shell-init", "zsh"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	body := out.String()
+	if !strings.Contains(body, "stooges() {") || !strings.Contains(body, "STOOGES_CD_FILE") {
+		t.Fatalf("expected shell wrapper output, got %q", body)
 	}
 }
 

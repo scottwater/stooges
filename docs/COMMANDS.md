@@ -47,7 +47,7 @@ stooges init -m master --agents larry,moe
 ## `add`
 
 ```bash
-stooges add [workspace] [--source <workspace>] [--track <branch>] [--branch [name]|-b[name]]
+stooges add [workspace] [--source <workspace>] [--track <branch>] [--branch [name]|-b[name]] [--no-cd]
 ```
 
 Behavior:
@@ -65,6 +65,8 @@ Behavior:
 - `--track` cannot be combined with `-b` (auto branch naming).
 - If all defaults exist, no-op with guidance message.
 - Never overwrites existing directories.
+- With shell integration enabled via `eval "$(stooges shell-init zsh)"` (or `bash`), `add` automatically `cd`s into the newly created workspace when exactly one workspace is created.
+- `--no-cd` disables that redirect for a single invocation.
 
 Examples:
 
@@ -176,6 +178,18 @@ Checks:
 - workspace validity
 - `.stooges` workspace layout / base repo resolution
 - active `.gitignore` patterns that currently match on-disk paths (warning-only)
+
+## `shell-init`
+
+```bash
+stooges shell-init [bash|zsh|sh]
+```
+
+Behavior:
+- Prints a shell wrapper function.
+- After `eval "$(stooges shell-init zsh)"`, successful `stooges add <workspace>` commands automatically `cd` into the created workspace.
+- Uses the resolved workspace root, so calling `stooges add` from inside another managed workspace still lands in the new workspace root path.
+- `--no-cd` on `add` suppresses the redirect.
 
 ## `version`
 

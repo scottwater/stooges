@@ -300,8 +300,38 @@ func TestMakeExplicitAgentCreates(t *testing.T) {
 	if len(res.Created) != 1 || res.Created[0] != "moe" {
 		t.Fatalf("unexpected result: %#v", res)
 	}
+	if res.WorkspaceRoot != workspace {
+		t.Fatalf("expected workspace root %s, got %s", workspace, res.WorkspaceRoot)
+	}
 	if _, err := os.Stat(filepath.Join(workspace, "moe", "README.md")); err != nil {
 		t.Fatalf("expected cloned file: %v", err)
+	}
+}
+
+func TestMakeFromWorkspaceSubdirReportsWorkspaceRoot(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	mustWriteFile(t, filepath.Join(layout.BaseRepoPath, "README.md"), []byte("ok"))
+	subdir := filepath.Join(workspace, "larry", "pkg", "api")
+	mustMkdirAll(t, subdir)
+	git := &fakeGit{topLevel: workspace}
+	svc := NewServiceWithDeps(Dependencies{
+		CWD:            func() (string, error) { return subdir, nil },
+		Chdir:          func(string) error { return nil },
+		Cloner:         fakeCloner{},
+		Perms:          &fakePerms{},
+		Git:            git,
+		Preflight:      NewPreflightChecker(fakeCloner{}),
+		Resolver:       NewRepoResolver(git),
+		BranchDetector: NewBranchDetector(git),
+	})
+
+	res, err := svc.Make(context.Background(), model.MakeOptions{Agent: "bob", Source: "base"})
+	if err != nil {
+		t.Fatalf("make failed: %v", err)
+	}
+	if res.WorkspaceRoot != workspace {
+		t.Fatalf("expected workspace root %s, got %s", workspace, res.WorkspaceRoot)
 	}
 }
 

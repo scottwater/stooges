@@ -90,6 +90,9 @@ stooges add --source base
 - `--branch <name>` creates or checks out the named branch.
 - `--track <branch>` checks out a local branch tracking `origin/<branch>`. Requires explicit workspace name.
 - `--source <workspace>` clones from a specific workspace instead of base (default: base).
+- Optional shell integration can auto-`cd` into the new workspace after successful single-workspace `stooges add` runs.
+- Setup example: `eval "$(stooges shell-init zsh)"` (or `bash`).
+- This is optional; without it, users can just `cd <workspace>` manually.
 
 ### Sync Base Repo
 
@@ -161,22 +164,25 @@ Destructive. Reverses `init`: removes workspace clones, moves `.stooges/` back t
 # 1. Initialize (once, from inside the repo)
 stooges init --confirm
 
-# 2. Create a workspace for a task
+# 2. (Optional) enable auto-cd for future add commands
+# eval "$(stooges shell-init zsh)"
+
+# 3. Create a workspace for a task
 stooges add my-task -b
 
-# 3. Work inside the workspace
-cd my-task
+# 4. Work inside the workspace
+# if shell integration is disabled: cd my-task
 # ... edit, test, commit, push ...
 
-# 4. Keep up to date
+# 5. Keep up to date
 cd ..
 stooges rebase
 
-# 5. Clean up when done
+# 6. Clean up when done
 cd ..
 trash my-task
 
-# 6. Tear down entirely when no longer needed
+# 7. Tear down entirely when no longer needed
 stooges undo --yes
 ```
 

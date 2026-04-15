@@ -359,7 +359,7 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (model.MakeR
 			}
 			return model.MakeResult{}, err
 		}
-		return model.MakeResult{Created: []string{agent}}, nil
+		return model.MakeResult{Created: []string{agent}, WorkspaceRoot: workspaceRoot}, nil
 	}
 
 	agents := model.NormalizeAgents(opts.Agents)
@@ -373,7 +373,7 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (model.MakeR
 		}
 	}
 	if len(missing) == 0 {
-		return model.MakeResult{Guidance: "all default agents already exist; pass an explicit agent name to create another workspace"}, nil
+		return model.MakeResult{Guidance: "all default agents already exist; pass an explicit agent name to create another workspace", WorkspaceRoot: workspaceRoot}, nil
 	}
 
 	created := make([]string, 0, len(missing))
@@ -421,7 +421,7 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (model.MakeR
 		return model.MakeResult{}, err
 	}
 
-	return model.MakeResult{Created: created}, nil
+	return model.MakeResult{Created: created, WorkspaceRoot: workspaceRoot}, nil
 }
 
 func (s *Service) Sync(ctx context.Context, opts model.SyncOptions) (model.SyncResult, error) {
