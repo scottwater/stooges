@@ -754,7 +754,7 @@
       <div class="scene" data-scene="II.">
         <p class="scene-title">Add a Workspace</p>
         <code><span style="color:var(--mid)">$</span> stooges add feature-x -b</code>
-        <p>Creates a new workspace with its own branch. Or use <code>stooges branch scott/aud-656</code>, <code>stooges fork scott/aud-656</code>, or <code>stooges track feature/x</code> to derive the workspace name automatically.</p>
+        <p>Creates a new workspace with its own branch. Base-derived <code>add</code> and <code>branch</code> runs sync first by default. Or use <code>stooges branch scott/aud-656</code>, <code>stooges fork scott/aud-656</code>, or <code>stooges track feature/x</code> to derive the workspace name automatically.</p>
       </div>
       <div class="scene" data-scene="III.">
         <p class="scene-title">Work Independently</p>
@@ -794,11 +794,11 @@
       </div>
       <div class="command-card">
         <span class="cmd">stooges add</span>
-        <span class="cmd-desc">Create new workspaces with optional branches</span>
+        <span class="cmd-desc">Create new workspaces with optional branches; syncs base first by default</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges branch</span>
-        <span class="cmd-desc">Create a workspace from a branch name</span>
+        <span class="cmd-desc">Create a workspace from a branch name; syncs base first by default</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges fork</span>

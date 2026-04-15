@@ -17,6 +17,7 @@ import (
 type fakeService struct {
 	initCalled                 bool
 	makeCalled                 bool
+	syncCalled                 int
 	doctorCalled               bool
 	lockCalled                 bool
 	listCalled                 bool
@@ -25,6 +26,8 @@ type fakeService struct {
 	lastCtx                    context.Context
 	lastInit                   model.InitOptions
 	lastMake                   model.MakeOptions
+	lastSync                   model.SyncOptions
+	syncErr                    error
 	preview                    string
 	currentWorkspace           engine.CurrentWorkspace
 	resolveCurrentWorkspaceErr error
@@ -47,8 +50,13 @@ func (f *fakeService) Make(ctx context.Context, opts model.MakeOptions) (model.M
 	}
 	return model.MakeResult{Created: []string{created}, WorkspaceRoot: "/tmp/workspace"}, nil
 }
-func (f *fakeService) Sync(ctx context.Context, _ model.SyncOptions) (model.SyncResult, error) {
+func (f *fakeService) Sync(ctx context.Context, opts model.SyncOptions) (model.SyncResult, error) {
+	f.syncCalled++
 	f.lastCtx = ctx
+	f.lastSync = opts
+	if f.syncErr != nil {
+		return model.SyncResult{}, f.syncErr
+	}
 	return model.SyncResult{RepoPath: "main"}, nil
 }
 func (f *fakeService) Clean(ctx context.Context, _ model.CleanOptions) (model.CleanResult, error) {
@@ -143,8 +151,41 @@ func TestAddSubcommandDispatches(t *testing.T) {
 	if !svc.makeCalled {
 		t.Fatal("expected add to call workspace make operation")
 	}
+	if svc.syncCalled != 1 {
+		t.Fatalf("expected add to auto-sync base once, got %d", svc.syncCalled)
+	}
 	if svc.lastMake.Agent != "moe" {
 		t.Fatalf("expected add agent moe, got %#v", svc.lastMake)
+	}
+}
+
+func TestAddNoSyncSkipsAutomaticBaseSync(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"add", "moe", "--no-sync"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if svc.syncCalled != 0 {
+		t.Fatalf("expected --no-sync to skip auto-sync, got %d sync calls", svc.syncCalled)
+	}
+}
+
+func TestAddWithNonBaseSourceSkipsAutomaticBaseSync(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"add", "moe", "--source", "larry"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if svc.syncCalled != 0 {
+		t.Fatalf("expected non-base source to skip auto-sync, got %d sync calls", svc.syncCalled)
 	}
 }
 
@@ -188,6 +229,9 @@ func TestAddTrackFlagUsesProvidedRemoteBranch(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute failed: %v", err)
 	}
+	if svc.syncCalled != 0 {
+		t.Fatalf("expected add --track to skip auto-sync, got %d sync calls", svc.syncCalled)
+	}
 	if svc.lastMake.Track != "feature/foo" || svc.lastMake.Branch != "" || svc.lastMake.BranchAuto {
 		t.Fatalf("expected track flag passthrough, got %#v", svc.lastMake)
 	}
@@ -220,6 +264,9 @@ func TestTrackCommandDerivesWorkspaceFromLastBranchSegment(t *testing.T) {
 	}
 	if !svc.makeCalled {
 		t.Fatal("expected track to call workspace make operation")
+	}
+	if svc.syncCalled != 0 {
+		t.Fatalf("expected track to skip auto-sync, got %d sync calls", svc.syncCalled)
 	}
 	if svc.lastMake.Agent != "foo" || svc.lastMake.Track != "feature/foo" {
 		t.Fatalf("expected derived workspace foo tracking feature/foo, got %#v", svc.lastMake)
@@ -269,6 +316,9 @@ func TestBranchCommandDerivesWorkspaceFromLastBranchSegment(t *testing.T) {
 	if !svc.makeCalled {
 		t.Fatal("expected branch to call workspace make operation")
 	}
+	if svc.syncCalled != 1 {
+		t.Fatalf("expected branch to auto-sync base once, got %d", svc.syncCalled)
+	}
 	if svc.lastMake.Agent != "aud-656" || svc.lastMake.Branch != "scott/aud-656" || svc.lastMake.Track != "" || svc.lastMake.BranchAuto {
 		t.Fatalf("expected derived workspace aud-656 with explicit branch, got %#v", svc.lastMake)
 	}
@@ -286,6 +336,21 @@ func TestBranchCommandSanitizesWorkspaceWhenBranchHasNoSlash(t *testing.T) {
 	}
 	if svc.lastMake.Agent != "release-candidate-2026-04-15" || svc.lastMake.Branch != "release candidate: 2026-04-15 !!!" {
 		t.Fatalf("expected sanitized workspace name and original branch, got %#v", svc.lastMake)
+	}
+}
+
+func TestBranchNoSyncSkipsAutomaticBaseSync(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"branch", "scott/aud-656", "--no-sync"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if svc.syncCalled != 0 {
+		t.Fatalf("expected branch --no-sync to skip auto-sync, got %d sync calls", svc.syncCalled)
 	}
 }
 

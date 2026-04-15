@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,11 +28,29 @@ func resolveBranchSelection(cmd *cobra.Command, args []string, branch string) (b
 	return branchName, branchAuto
 }
 
+func sourceUsesBase(source string) bool {
+	switch strings.TrimSpace(source) {
+	case "", "base", "main", "master", ".stooges":
+		return true
+	default:
+		return false
+	}
+}
+
+func maybeSyncBaseSource(ctx context.Context, svc engine.WorkspaceService, source string, noSync bool) error {
+	if noSync || !sourceUsesBase(source) {
+		return nil
+	}
+	_, err := svc.Sync(ctx, model.SyncOptions{})
+	return err
+}
+
 func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	var source string
 	var branch string
 	var track string
 	var noCD bool
+	var noSync bool
 
 	cmd := &cobra.Command{
 		Use:   "add [workspace]",
@@ -51,6 +70,11 @@ func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 				workspace = args[0]
 			}
 			branchName, branchAuto := resolveBranchSelection(cmd, args, branch)
+			if strings.TrimSpace(track) == "" {
+				if err := maybeSyncBaseSource(cmd.Context(), svc, source, noSync); err != nil {
+					return err
+				}
+			}
 			result, err := svc.Make(cmd.Context(), model.MakeOptions{
 				Agent:      workspace,
 				Source:     source,
@@ -78,6 +102,7 @@ func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	cmd.Flags().StringVar(&track, "track", "", "Track remote branch in new workspace (fails when origin/<branch> is missing)")
 	cmd.Flags().StringVarP(&branch, "branch", "b", "", "Optional branch to checkout/create in new workspace (`-b` uses workspace name)")
 	cmd.Flags().BoolVar(&noCD, "no-cd", false, "Stay in the current directory even when shell integration is enabled")
+	cmd.Flags().BoolVar(&noSync, "no-sync", false, "Skip the automatic base sync before creating workspaces from base")
 	if branchFlag := cmd.Flags().Lookup("branch"); branchFlag != nil {
 		branchFlag.NoOptDefVal = autoBranchSentinel
 	}

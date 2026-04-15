@@ -48,7 +48,7 @@ stooges init -m master --agents larry,moe
 ## `add`
 
 ```bash
-stooges add [workspace] [--source <workspace>] [--track <branch>] [--branch [name]|-b[name]] [--no-cd]
+stooges add [workspace] [--source <workspace>] [--track <branch>] [--branch [name]|-b[name]] [--no-cd] [--no-sync]
 ```
 
 Behavior:
@@ -56,11 +56,13 @@ Behavior:
 - `stooges add <workspace>` creates only that workspace and fails if it already exists.
 - `stooges add` (no workspace) creates only missing defaults among `larry,curly,moe`.
 - Default source is `base` (`.stooges`).
+- Automatically runs `stooges sync` first when cloning from base, unless `--no-sync` is passed.
 - `--source main` and `--source master` are accepted aliases for `base`.
 - `--branch <name>` checks out existing branch (or creates it when missing) in each new workspace.
 - `-b` / `--branch` (no value) uses workspace name as branch name.
 - Named `--branch` with no explicit workspace is allowed only when exactly one workspace is created.
 - `--track <branch>` tracks `origin/<branch>` in the new workspace and fails if remote branch is missing.
+- Auto-sync does not run for `--track` or for non-base `--source` values.
 - `--track` requires an explicit workspace name.
 - With `--track`, `--branch <name>` sets local branch name while tracking `origin/<track>`.
 - `--track` cannot be combined with `-b` (auto branch naming).
@@ -68,6 +70,7 @@ Behavior:
 - Never overwrites existing directories.
 - With shell integration enabled via `eval "$(stooges shell-init zsh)"` (or `bash`), `add` automatically `cd`s into the newly created workspace when exactly one workspace is created. The same auto-`cd` behavior applies to `branch`, `fork`, and `track`.
 - `--no-cd` disables that redirect for a single invocation.
+- `--no-sync` skips the automatic base sync.
 
 Examples:
 
@@ -83,11 +86,13 @@ stooges add bob --track feature/foo --branch local-foo
 ## `branch`
 
 ```bash
-stooges branch <branch> [--source <workspace>] [--no-cd]
+stooges branch <branch> [--source <workspace>] [--no-cd] [--no-sync]
 ```
 
 Behavior:
 - Convenience wrapper for `stooges add <derived-workspace> -b <branch>`.
+- Automatically runs `stooges sync` first when cloning from base, unless `--no-sync` is passed.
+- No auto-sync runs when `--source` points at another workspace.
 - Derives workspace name from the last non-empty `/`-separated branch segment.
 - When the branch has no `/`, derives the workspace from the first 50 sanitized characters.
 - Sanitization keeps letters, digits, `-`, and `_`, and collapses other characters into `-`.
