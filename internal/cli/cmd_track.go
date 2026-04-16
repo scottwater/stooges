@@ -27,7 +27,7 @@ func newTrackCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 				return fmt.Errorf("accepts 1 arg(s), received 0")
 			case len(args) == 1:
 				return nil
-			case len(args) == 2 && cmd.Flags().Changed("branch"):
+			case len(args) == 2 && branchAllowsExtraPositionalArg(cmd, branch):
 				return nil
 			default:
 				return fmt.Errorf("accepts 1 arg(s), received %d", len(args))

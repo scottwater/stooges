@@ -209,7 +209,7 @@ func TestAddBranchFlagNamedUsesProvidedBranch(t *testing.T) {
 	out := &bytes.Buffer{}
 	errOut := &bytes.Buffer{}
 	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
-	cmd.SetArgs([]string{"add", "bob", "--branch", "not_bob"})
+	cmd.SetArgs([]string{"add", "bob", "--branch=not_bob"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute failed: %v", err)
@@ -242,13 +242,47 @@ func TestAddTrackFlagWithBranchOverridePassesBoth(t *testing.T) {
 	out := &bytes.Buffer{}
 	errOut := &bytes.Buffer{}
 	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
-	cmd.SetArgs([]string{"add", "bob", "--track", "feature/foo", "--branch", "local-foo"})
+	cmd.SetArgs([]string{"add", "bob", "--track", "feature/foo", "--branch=local-foo"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute failed: %v", err)
 	}
 	if svc.lastMake.Track != "feature/foo" || svc.lastMake.Branch != "local-foo" || svc.lastMake.BranchAuto {
 		t.Fatalf("expected track + branch passthrough, got %#v", svc.lastMake)
+	}
+}
+
+func TestAddRejectsExtraPositionalWhenBranchFlagHasExplicitValue(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"add", "bob", "typo", "--branch=local-foo"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected add to reject extra positional arg")
+	}
+	if !strings.Contains(err.Error(), "accepts at most 1 arg(s), received 2") {
+		t.Fatalf("expected arg validation error, got %v", err)
+	}
+	if svc.makeCalled {
+		t.Fatal("expected add arg validation to prevent make call")
+	}
+}
+
+func TestAddAllowsExtraPositionalWhenBranchFlagUsesAutoMode(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"add", "bob", "feature/foo", "-b"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if svc.lastMake.Branch != "feature/foo" || svc.lastMake.BranchAuto {
+		t.Fatalf("expected second positional branch name in auto mode, got %#v", svc.lastMake)
 	}
 }
 
@@ -293,13 +327,47 @@ func TestTrackCommandWithBranchOverridePassesBoth(t *testing.T) {
 	out := &bytes.Buffer{}
 	errOut := &bytes.Buffer{}
 	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
-	cmd.SetArgs([]string{"track", "feature/foo", "--branch", "local-foo"})
+	cmd.SetArgs([]string{"track", "feature/foo", "--branch=local-foo"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute failed: %v", err)
 	}
 	if svc.lastMake.Agent != "foo" || svc.lastMake.Track != "feature/foo" || svc.lastMake.Branch != "local-foo" || svc.lastMake.BranchAuto {
 		t.Fatalf("expected derived workspace + branch override, got %#v", svc.lastMake)
+	}
+}
+
+func TestTrackRejectsExtraPositionalWhenBranchFlagHasExplicitValue(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"track", "feature/foo", "typo", "--branch=local-foo"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected track to reject extra positional arg")
+	}
+	if !strings.Contains(err.Error(), "accepts 1 arg(s), received 2") {
+		t.Fatalf("expected arg validation error, got %v", err)
+	}
+	if svc.makeCalled {
+		t.Fatal("expected track arg validation to prevent make call")
+	}
+}
+
+func TestTrackAllowsExtraPositionalWhenBranchFlagUsesAutoMode(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"track", "feature/foo", "local-foo", "-b"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if svc.lastMake.Agent != "foo" || svc.lastMake.Track != "feature/foo" || svc.lastMake.Branch != "local-foo" || svc.lastMake.BranchAuto {
+		t.Fatalf("expected derived workspace + positional branch name in auto mode, got %#v", svc.lastMake)
 	}
 }
 

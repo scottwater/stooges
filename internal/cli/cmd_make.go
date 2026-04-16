@@ -14,6 +14,10 @@ import (
 
 const autoBranchSentinel = "__stooges_auto_branch__"
 
+func branchAllowsExtraPositionalArg(cmd *cobra.Command, branch string) bool {
+	return cmd.Flags().Changed("branch") && branch == autoBranchSentinel
+}
+
 func resolveBranchSelection(cmd *cobra.Command, args []string, branch string) (branchName string, branchAuto bool) {
 	branchChanged := cmd.Flags().Changed("branch")
 	branchValue := branch
@@ -59,7 +63,7 @@ func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 			if len(args) <= 1 {
 				return nil
 			}
-			if len(args) == 2 && cmd.Flags().Changed("branch") {
+			if len(args) == 2 && branchAllowsExtraPositionalArg(cmd, branch) {
 				return nil
 			}
 			return fmt.Errorf("accepts at most 1 arg(s), received %d", len(args))
