@@ -776,3 +776,25 @@ func TestUpgradeCommandSkipsPassiveNotice(t *testing.T) {
 		t.Fatalf("expected upgrade output, got %q", out.String())
 	}
 }
+
+func TestShellInitCommandSkipsPassiveNotice(t *testing.T) {
+	svc := &fakeService{}
+	updater := &fakeUpdater{notifyText: "should not print\n"}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmdWithUpdater(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut}, updater)
+	cmd.SetArgs([]string{"shell-init", "zsh"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if updater.maybeNotifyCalled != 0 {
+		t.Fatalf("expected shell-init to skip passive notice, got %d calls", updater.maybeNotifyCalled)
+	}
+	if strings.Contains(errOut.String(), "should not print") {
+		t.Fatalf("did not expect stderr notice during shell-init, got %q", errOut.String())
+	}
+	if !strings.Contains(out.String(), "stooges() {") {
+		t.Fatalf("expected shell wrapper output, got %q", out.String())
+	}
+}

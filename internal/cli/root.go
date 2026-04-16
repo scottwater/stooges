@@ -45,6 +45,15 @@ func (noopUpdater) Upgrade(context.Context, string) (update.UpgradeResult, error
 	return update.UpgradeResult{}, fmt.Errorf("upgrade unavailable")
 }
 
+func skipsPassiveUpdateCheck(cmd *cobra.Command) bool {
+	switch cmd.Name() {
+	case "upgrade", "shell-init":
+		return true
+	default:
+		return false
+	}
+}
+
 func newRootCmd(svc engine.WorkspaceService, streams Streams, updaterClient Updater) *cobra.Command {
 	var showVersion bool
 
@@ -64,7 +73,7 @@ func newRootCmd(svc engine.WorkspaceService, streams Streams, updaterClient Upda
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
-			if cmd.Name() == "upgrade" {
+			if skipsPassiveUpdateCheck(cmd) {
 				return
 			}
 			_ = updaterClient.MaybeNotify(cmd.Context(), streams.ErrOut, version.Value)
