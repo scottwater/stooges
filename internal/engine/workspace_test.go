@@ -67,6 +67,7 @@ func (*fakePerms) CountSymlinks(string) (int, error) { return 0, nil }
 
 type fakeGit struct {
 	topLevel             string
+	topLevelErr          error
 	currentBranch        string
 	currentBranchByRepo  map[string]string
 	branchNameByRepo     map[string]string
@@ -196,6 +197,9 @@ func (f *fakeGit) IgnoredPatternsWithMatches(context.Context, string) ([]string,
 }
 
 func (f *fakeGit) TopLevel(context.Context, string) (string, error) {
+	if f.topLevelErr != nil {
+		return "", f.topLevelErr
+	}
 	if f.topLevel == "" {
 		return "", errors.New("no git root")
 	}
@@ -379,6 +383,68 @@ func TestResolveCurrentWorkspaceRejectsBaseRepo(t *testing.T) {
 	_, err := svc.ResolveCurrentWorkspace(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "fork cannot run from the base repo") {
 		t.Fatalf("expected base repo error, got %v", err)
+	}
+}
+
+func TestResolveCurrentWorkspaceAcceptsSymlinkedWorkspacePath(t *testing.T) {
+	workspace := t.TempDir()
+	mustSetupConfiguredWorkspace(t, workspace, "main", "larry")
+	realSubdir := filepath.Join(workspace, "larry", "pkg", "api")
+	mustMkdirAll(t, realSubdir)
+
+	linkParent := t.TempDir()
+	symlinkRoot := filepath.Join(linkParent, "workspace-link")
+	if err := os.Symlink(workspace, symlinkRoot); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	cwd := filepath.Join(symlinkRoot, "larry", "pkg", "api")
+	git := &fakeGit{topLevel: filepath.Join(workspace, "larry")}
+	svc := NewServiceWithDeps(Dependencies{
+		CWD:            func() (string, error) { return cwd, nil },
+		Chdir:          func(string) error { return nil },
+		Cloner:         fakeCloner{},
+		Perms:          &fakePerms{},
+		Git:            git,
+		Preflight:      NewPreflightChecker(fakeCloner{}),
+		Resolver:       NewRepoResolver(git),
+		BranchDetector: NewBranchDetector(git),
+	})
+
+	res, err := svc.ResolveCurrentWorkspace(context.Background())
+	if err != nil {
+		t.Fatalf("resolve current workspace via symlink failed: %v", err)
+	}
+	if res.Name != "larry" || res.Path != filepath.Join(symlinkRoot, "larry") || res.WorkspaceRoot != symlinkRoot {
+		t.Fatalf("unexpected current workspace via symlink: %#v", res)
+	}
+}
+
+func TestResolveCurrentWorkspacePreservesGitTopLevelErrors(t *testing.T) {
+	workspace := t.TempDir()
+	mustSetupConfiguredWorkspace(t, workspace, "main", "larry")
+	cwd := filepath.Join(workspace, "larry", "pkg", "api")
+	mustMkdirAll(t, cwd)
+	git := &fakeGit{topLevelErr: errors.New("git unavailable")}
+	svc := NewServiceWithDeps(Dependencies{
+		CWD:            func() (string, error) { return cwd, nil },
+		Chdir:          func(string) error { return nil },
+		Cloner:         fakeCloner{},
+		Perms:          &fakePerms{},
+		Git:            git,
+		Preflight:      NewPreflightChecker(fakeCloner{}),
+		Resolver:       NewRepoResolver(git),
+		BranchDetector: NewBranchDetector(git),
+	})
+
+	_, err := svc.ResolveCurrentWorkspace(context.Background())
+	if err == nil {
+		t.Fatal("expected git root resolution error")
+	}
+	if !apperrors.IsKind(err, apperrors.KindGitFailure) {
+		t.Fatalf("expected git failure kind, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "resolve current workspace git root") || !strings.Contains(err.Error(), "git unavailable") {
+		t.Fatalf("expected wrapped git error, got %v", err)
 	}
 }
 

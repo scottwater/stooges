@@ -100,6 +100,33 @@ func NewServiceWithDeps(deps Dependencies) *Service {
 	}
 }
 
+func canonicalPath(path string) (string, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", apperrors.Wrap(apperrors.KindFilesystemFailure, fmt.Sprintf("resolve absolute path for %q", path), err)
+	}
+	resolvedPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return filepath.Clean(absPath), nil
+		}
+		return "", apperrors.Wrap(apperrors.KindFilesystemFailure, fmt.Sprintf("resolve symlinks for %q", path), err)
+	}
+	return filepath.Clean(resolvedPath), nil
+}
+
+func canonicalPathsEqual(left, right string) (bool, error) {
+	canonicalLeft, err := canonicalPath(left)
+	if err != nil {
+		return false, err
+	}
+	canonicalRight, err := canonicalPath(right)
+	if err != nil {
+		return false, err
+	}
+	return canonicalLeft == canonicalRight, nil
+}
+
 func (s *Service) ResolveCurrentWorkspace(ctx context.Context) (CurrentWorkspace, error) {
 	cwd, err := s.cwd()
 	if err != nil {
@@ -109,19 +136,31 @@ func (s *Service) ResolveCurrentWorkspace(ctx context.Context) (CurrentWorkspace
 	if err != nil {
 		return CurrentWorkspace{}, err
 	}
-	if filepath.Clean(cwd) == filepath.Clean(workspaceRoot) {
+	atWorkspaceRoot, err := canonicalPathsEqual(cwd, workspaceRoot)
+	if err != nil {
+		return CurrentWorkspace{}, err
+	}
+	if atWorkspaceRoot {
 		return CurrentWorkspace{}, apperrors.New(apperrors.KindInvalidInput, "fork must run from inside a managed workspace, not the workspace root")
 	}
 	repoRoot, err := s.git.TopLevel(ctx, cwd)
 	if err != nil {
-		return CurrentWorkspace{}, apperrors.New(apperrors.KindInvalidInput, "fork must run from inside a managed workspace")
+		return CurrentWorkspace{}, apperrors.Wrap(apperrors.KindGitFailure, fmt.Sprintf("resolve current workspace git root from %q", cwd), err)
 	}
-	if filepath.Clean(repoRoot) == filepath.Clean(layout.BaseRepoPath) {
+	isBaseRepo, err := canonicalPathsEqual(repoRoot, layout.BaseRepoPath)
+	if err != nil {
+		return CurrentWorkspace{}, err
+	}
+	if isBaseRepo {
 		return CurrentWorkspace{}, apperrors.New(apperrors.KindInvalidInput, "fork cannot run from the base repo; run it from inside a managed workspace")
 	}
 	for _, workspace := range layout.ManagedWorkspaces {
 		workspacePath := filepath.Join(layout.WorkspaceRoot, workspace)
-		if filepath.Clean(repoRoot) == filepath.Clean(workspacePath) {
+		matchesWorkspace, compareErr := canonicalPathsEqual(repoRoot, workspacePath)
+		if compareErr != nil {
+			return CurrentWorkspace{}, compareErr
+		}
+		if matchesWorkspace {
 			return CurrentWorkspace{Name: workspace, Path: workspacePath, WorkspaceRoot: workspaceRoot}, nil
 		}
 	}
