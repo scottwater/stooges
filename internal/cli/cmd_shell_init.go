@@ -26,7 +26,7 @@ func newShellInitCmd(streams Streams) *cobra.Command {
 			}
 		},
 		Run: func(_ *cobra.Command, _ []string) {
-			fmt.Fprint(streams.Out, stoogesShellInitScript)
+			_, _ = streams.Out.Write([]byte(stoogesShellInitScript))
 		},
 	}
 }
@@ -36,12 +36,18 @@ const stoogesShellInitScript = `stooges() {
   STOOGES_CD_FILE="${_stooges_cd_file}" command stooges "$@"
   _stooges_status=$?
   if [ "${_stooges_status}" -eq 0 ] && [ -s "${_stooges_cd_file}" ]; then
-    _stooges_cd_target="$(cat "${_stooges_cd_file}")"
-    if [ -n "${_stooges_cd_target}" ]; then
-      cd "${_stooges_cd_target}" || _stooges_status=$?
+    if ! _stooges_cd_target="$(cat "${_stooges_cd_file}")"; then
+      printf 'stooges: warning: failed to read auto-cd target from %s\n' "${_stooges_cd_file}" >&2
+    elif [ -n "${_stooges_cd_target}" ]; then
+      if ! cd "${_stooges_cd_target}"; then
+        _stooges_status=$?
+        printf 'stooges: warning: failed to cd to %s\n' "${_stooges_cd_target}" >&2
+      fi
     fi
   fi
-  rm -f "${_stooges_cd_file}"
+  if ! rm -f "${_stooges_cd_file}"; then
+    printf 'stooges: warning: failed to remove temp file %s\n' "${_stooges_cd_file}" >&2
+  fi
   return "${_stooges_status}"
 }
 `

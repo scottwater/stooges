@@ -90,7 +90,7 @@ func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 				return err
 			}
 			if err := writeAddCDTarget(result, noCD); err != nil {
-				fmt.Fprintf(streams.ErrOut, "warning: unable to persist add cd target: %v\n", err)
+				warnAutoCDFailure(streams, result, err)
 			}
 			if len(result.Created) > 0 {
 				fmt.Fprintf(streams.Out, "created: %s\n", strings.Join(result.Created, ", "))
@@ -123,4 +123,25 @@ func writeAddCDTarget(result model.MakeResult, noCD bool) error {
 	}
 	targetDir := filepath.Join(result.WorkspaceRoot, result.Created[0])
 	return os.WriteFile(targetFile, []byte(targetDir), 0o600)
+}
+
+func warnAutoCDFailure(streams Streams, result model.MakeResult, err error) {
+	targetFile := strings.TrimSpace(os.Getenv("STOOGES_CD_FILE"))
+	workspaceName := ""
+	workspacePath := ""
+	if len(result.Created) == 1 {
+		workspaceName = strings.TrimSpace(result.Created[0])
+		if strings.TrimSpace(result.WorkspaceRoot) != "" {
+			workspacePath = filepath.Join(result.WorkspaceRoot, workspaceName)
+		}
+	}
+
+	switch {
+	case workspaceName != "" && targetFile != "" && workspacePath != "":
+		fmt.Fprintf(streams.ErrOut, "warning: workspace %q was created, but auto-cd failed: could not write %q for %q: %v\n", workspaceName, targetFile, workspacePath, err)
+	case targetFile != "":
+		fmt.Fprintf(streams.ErrOut, "warning: workspace creation succeeded, but auto-cd failed: could not write %q: %v\n", targetFile, err)
+	default:
+		fmt.Fprintf(streams.ErrOut, "warning: workspace creation succeeded, but auto-cd failed: %v\n", err)
+	}
 }

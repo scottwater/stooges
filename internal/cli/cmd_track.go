@@ -51,7 +51,7 @@ func newTrackCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 				return err
 			}
 			if err := writeAddCDTarget(result, noCD); err != nil {
-				fmt.Fprintf(streams.ErrOut, "warning: unable to persist add cd target: %v\n", err)
+				warnAutoCDFailure(streams, result, err)
 			}
 			if len(result.Created) > 0 {
 				fmt.Fprintf(streams.Out, "created: %s\n", strings.Join(result.Created, ", "))

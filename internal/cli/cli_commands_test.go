@@ -493,6 +493,33 @@ func TestAddNoCDSkipsShellIntegrationTarget(t *testing.T) {
 	}
 }
 
+func TestAddWarnsWhenAutoCDTargetWriteFails(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cdFile := t.TempDir()
+	t.Setenv("STOOGES_CD_FILE", cdFile)
+	cmd.SetArgs([]string{"add", "bob"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	warning := errOut.String()
+	if !strings.Contains(warning, `workspace "bob" was created`) {
+		t.Fatalf("expected workspace creation warning context, got %q", warning)
+	}
+	if !strings.Contains(warning, cdFile) {
+		t.Fatalf("expected warning to include cd target file %q, got %q", cdFile, warning)
+	}
+	if !strings.Contains(warning, "/tmp/workspace/bob") {
+		t.Fatalf("expected warning to include workspace path, got %q", warning)
+	}
+	if !svc.makeCalled {
+		t.Fatal("expected workspace creation to still succeed")
+	}
+}
+
 func TestShellInitCommandPrintsWrapper(t *testing.T) {
 	svc := &fakeService{}
 	out := &bytes.Buffer{}
@@ -505,6 +532,9 @@ func TestShellInitCommandPrintsWrapper(t *testing.T) {
 	body := out.String()
 	if !strings.Contains(body, "stooges() {") || !strings.Contains(body, "STOOGES_CD_FILE") {
 		t.Fatalf("expected shell wrapper output, got %q", body)
+	}
+	if !strings.Contains(body, "failed to read auto-cd target") || !strings.Contains(body, "failed to cd to") || !strings.Contains(body, "failed to remove temp file") {
+		t.Fatalf("expected shell wrapper diagnostics, got %q", body)
 	}
 }
 
