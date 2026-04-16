@@ -367,7 +367,7 @@ func TestForkCommandUsesCurrentWorkspaceAsSource(t *testing.T) {
 	if !svc.makeCalled {
 		t.Fatal("expected fork to call workspace make operation")
 	}
-	if svc.lastMake.Agent != "aud-656" || svc.lastMake.Source != "larry" || svc.lastMake.Branch != "scott/aud-656" || svc.lastMake.Track != "" || svc.lastMake.BranchAuto {
+	if svc.lastMake.Agent != "aud-656" || svc.lastMake.Source != "larry" || svc.lastMake.Branch != "scott/aud-656" || svc.lastMake.Track != "" || svc.lastMake.BranchAuto || !svc.lastMake.RequireNewBranch {
 		t.Fatalf("expected derived workspace aud-656 from current workspace source, got %#v", svc.lastMake)
 	}
 }
@@ -382,7 +382,7 @@ func TestForkCommandSanitizesWorkspaceWhenBranchHasNoSlash(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute failed: %v", err)
 	}
-	if svc.lastMake.Agent != "release-candidate-2026-04-15" || svc.lastMake.Source != "larry" || svc.lastMake.Branch != "release candidate: 2026-04-15 !!!" {
+	if svc.lastMake.Agent != "release-candidate-2026-04-15" || svc.lastMake.Source != "larry" || svc.lastMake.Branch != "release candidate: 2026-04-15 !!!" || !svc.lastMake.RequireNewBranch {
 		t.Fatalf("expected sanitized workspace name and current workspace source, got %#v", svc.lastMake)
 	}
 }

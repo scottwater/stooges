@@ -116,12 +116,13 @@ stooges fork <branch> [--no-cd]
 Behavior:
 - Convenience wrapper for `stooges add <derived-workspace> --source <current-workspace> --branch <branch>`.
 - Must run from inside a managed workspace (including its subdirectories), not from the workspace root or base repo.
-- Clones the current managed workspace rather than `.stooges`, so the new workspace starts from the current workspace state instead of main.
+- Clones the current managed workspace rather than `.stooges`, so the new workspace starts from the current workspace state instead of the base branch state.
 - Derives workspace name from the last non-empty `/`-separated branch segment.
 - When the branch has no `/`, derives the workspace from the first 50 sanitized characters.
 - Sanitization keeps letters, digits, `-`, and `_`, and collapses other characters into `-`.
 - Fails when derivation produces an empty name or reserved `base`.
 - Allows normal dirty/untracked changes in the source workspace to come along for the copy.
+- Fails if the requested local branch already exists in the copied workspace.
 - Refuses to run when the source workspace has an in-progress merge, rebase, cherry-pick, revert, sequencer operation, or git index lock.
 - Workspace collisions still fail normally, so `scott/foo` and `team/foo` will both try to use workspace `foo`.
 
@@ -146,6 +147,7 @@ Behavior:
 - Sanitization keeps letters, digits, `-`, and `_`, and collapses other characters into `-`.
 - Fails when derivation produces an empty name or reserved `base`.
 - `--branch <name>` still controls the local git branch name; without it, the local branch defaults to the tracked branch, same as `add --track`.
+- Fails if `origin/<branch>` is missing or if the destination local branch already exists in the copied workspace.
 - Workspace collisions still fail normally, so `feature/foo` and `bug/foo` will both try to use workspace `foo`.
 
 Examples:

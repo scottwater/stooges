@@ -491,6 +491,36 @@ func TestMakeExplicitAgentBranchSwitchesExistingBranch(t *testing.T) {
 	}
 }
 
+func TestMakeExplicitAgentRequireNewBranchFailsWhenLocalBranchExists(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	mustWriteFile(t, filepath.Join(layout.BaseRepoPath, "README.md"), []byte("ok"))
+	git := &fakeGit{
+		topLevel:          workspace,
+		localBranchExists: map[string]bool{"feature/foo": true},
+	}
+
+	svc := newTestService(t, workspace, git)
+	_, err := svc.Make(context.Background(), model.MakeOptions{
+		Agent:            "bob",
+		Source:           "base",
+		Branch:           "feature/foo",
+		RequireNewBranch: true,
+	})
+	if err == nil || !apperrors.IsKind(err, apperrors.KindInvalidInput) {
+		t.Fatalf("expected invalid input error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), `local branch "feature/foo" already exists`) {
+		t.Fatalf("expected existing-branch error, got %v", err)
+	}
+	if pathExists(filepath.Join(workspace, "bob")) {
+		t.Fatal("expected partially-created workspace removed after branch failure")
+	}
+	if len(git.switchCreates) != 0 || len(git.switches) != 0 {
+		t.Fatalf("expected no branch switch/create calls, got switches=%#v switchCreates=%#v", git.switches, git.switchCreates)
+	}
+}
+
 func TestMakeExplicitAgentTrackChecksOutRemoteBranch(t *testing.T) {
 	workspace := t.TempDir()
 	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
@@ -555,6 +585,32 @@ func TestMakeTrackFailsWhenRemoteBranchMissing(t *testing.T) {
 	}
 	if pathExists(filepath.Join(workspace, "bob")) {
 		t.Fatal("expected partially-created workspace removed after track failure")
+	}
+}
+
+func TestMakeTrackFailsWhenLocalBranchAlreadyExists(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	mustWriteFile(t, filepath.Join(layout.BaseRepoPath, "README.md"), []byte("ok"))
+	git := &fakeGit{
+		topLevel:           workspace,
+		remoteBranchExists: map[string]bool{"feature/foo": true},
+		localBranchExists:  map[string]bool{"feature/foo": true},
+	}
+
+	svc := newTestService(t, workspace, git)
+	_, err := svc.Make(context.Background(), model.MakeOptions{Agent: "bob", Source: "base", Track: "feature/foo"})
+	if err == nil || !apperrors.IsKind(err, apperrors.KindInvalidInput) {
+		t.Fatalf("expected invalid input error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), `local branch "feature/foo" already exists`) {
+		t.Fatalf("expected existing-local-branch error, got %v", err)
+	}
+	if pathExists(filepath.Join(workspace, "bob")) {
+		t.Fatal("expected partially-created workspace removed after track failure")
+	}
+	if len(git.switchTracks) != 0 || len(git.switches) != 0 {
+		t.Fatalf("expected no tracking branch checkout, got switchTracks=%#v switches=%#v", git.switchTracks, git.switches)
 	}
 }
 

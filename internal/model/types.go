@@ -42,12 +42,13 @@ type InitOptions struct {
 }
 
 type MakeOptions struct {
-	Agent      string
-	Source     string
-	Agents     []string
-	Track      string
-	Branch     string
-	BranchAuto bool
+	Agent            string
+	Source           string
+	Agents           []string
+	Track            string
+	Branch           string
+	BranchAuto       bool
+	RequireNewBranch bool
 }
 
 type SyncOptions struct {

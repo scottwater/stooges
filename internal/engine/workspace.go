@@ -296,6 +296,17 @@ func (s *Service) checkoutOrCreateBranch(ctx context.Context, repo, branch strin
 	return s.git.SwitchCreate(ctx, repo, branch)
 }
 
+func (s *Service) createNewLocalBranch(ctx context.Context, repo, branch string) error {
+	exists, err := s.git.LocalBranchExists(ctx, repo, branch)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return apperrors.New(apperrors.KindInvalidInput, fmt.Sprintf("local branch %q already exists; choose a different branch name", branch))
+	}
+	return s.git.SwitchCreate(ctx, repo, branch)
+}
+
 func (s *Service) checkoutTrackingBranch(ctx context.Context, repo, remoteBranch, localBranch string) error {
 	if err := s.git.Fetch(ctx, repo); err != nil {
 		return err
@@ -315,7 +326,7 @@ func (s *Service) checkoutTrackingBranch(ctx context.Context, repo, remoteBranch
 		if localBranch != remoteBranch {
 			return apperrors.New(apperrors.KindInvalidInput, fmt.Sprintf("local branch %q already exists; choose a different --branch name", localBranch))
 		}
-		return s.git.Switch(ctx, repo, localBranch)
+		return apperrors.New(apperrors.KindInvalidInput, fmt.Sprintf("local branch %q already exists; refusing to reuse it for tracking; choose a different branch name", localBranch))
 	}
 	return s.git.SwitchTrack(ctx, repo, localBranch, remoteBranch)
 }
@@ -377,12 +388,18 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (model.MakeR
 				return model.MakeResult{}, err
 			}
 		} else if shouldSwitchBranch {
-			if err := s.checkoutOrCreateBranch(ctx, dst, targetBranch); err != nil {
+			var branchErr error
+			if opts.RequireNewBranch {
+				branchErr = s.createNewLocalBranch(ctx, dst, targetBranch)
+			} else {
+				branchErr = s.checkoutOrCreateBranch(ctx, dst, targetBranch)
+			}
+			if branchErr != nil {
 				rollbackErr := rollbackCreatedWorkspaces(workspaceRoot, []string{agent})
 				if rollbackErr != nil {
-					return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(err, rollbackErr))
+					return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(branchErr, rollbackErr))
 				}
-				return model.MakeResult{}, err
+				return model.MakeResult{}, branchErr
 			}
 		}
 		layout.ManagedWorkspaces = appendManagedWorkspaces(layout.ManagedWorkspaces, agent)

@@ -99,7 +99,7 @@ func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&source, "source", "base", "Source workspace name (default: base/.stooges)")
-	cmd.Flags().StringVar(&track, "track", "", "Track remote branch in new workspace (fails when origin/<branch> is missing)")
+	cmd.Flags().StringVar(&track, "track", "", "Track remote branch in new workspace (fails when origin/<branch> is missing or the local branch already exists)")
 	cmd.Flags().StringVarP(&branch, "branch", "b", "", "Optional branch to checkout/create in new workspace (`-b` uses workspace name)")
 	cmd.Flags().BoolVar(&noCD, "no-cd", false, "Stay in the current directory even when shell integration is enabled")
 	cmd.Flags().BoolVar(&noSync, "no-sync", false, "Skip the automatic base sync before creating workspaces from base")

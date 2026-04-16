@@ -781,12 +781,12 @@
       <div class="scene" data-scene="EY.">
         <p class="scene-title">Fork Example</p>
         <code><span style="color:var(--mid)">$</span> cd larry &amp;&amp; stooges fork scott/aud-656</code>
-        <p>Copies the current managed workspace state into <code>aud-656</code> and creates or switches local branch <code>scott/aud-656</code>.</p>
+        <p>Copies the current managed workspace state into <code>aud-656</code> and creates local branch <code>scott/aud-656</code>; errors if that branch already exists in the copied workspace.</p>
       </div>
       <div class="scene" data-scene="EZ.">
         <p class="scene-title">Track Example</p>
         <code><span style="color:var(--mid)">$</span> stooges track feature/foo</code>
-        <p>Derives workspace <code>foo</code> and checks out a local branch tracking <code>origin/feature/foo</code>.</p>
+        <p>Derives workspace <code>foo</code> and checks out a local branch tracking <code>origin/feature/foo</code>; errors if the remote branch is missing or the destination local branch already exists.</p>
       </div>
       <div class="command-card">
         <span class="cmd">stooges init</span>
