@@ -10,7 +10,7 @@ import (
 func newShellInitCmd(streams Streams) *cobra.Command {
 	return &cobra.Command{
 		Use:   "shell-init [bash|zsh|sh]",
-		Short: "Print shell integration for auto-cd after `stooges add`",
+		Short: "Print shell integration for auto-cd after add/branch/fork/track",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return fmt.Errorf("accepts at most 1 arg(s), received %d", len(args))

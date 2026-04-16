@@ -47,11 +47,11 @@ stooges init
 
 You can also just run `stooges` with no arguments for an interactive guided mode.
 
-### Optional: auto-cd after `stooges add`
+### Optional: auto-cd after creating a workspace
 
 This feature is optional.
 
-By default, the `stooges` binary cannot change your current shell directory on its own, so if you want `stooges add <workspace>` to automatically drop you into the new workspace, enable the shell wrapper once in your shell profile:
+By default, the `stooges` binary cannot change your current shell directory on its own, so if you want successful single-workspace `stooges add`, `stooges branch`, `stooges fork`, or `stooges track` commands to automatically drop you into the new workspace, enable the shell wrapper once in your shell profile:
 
 ```bash
 # zsh
@@ -63,7 +63,7 @@ eval "$(stooges shell-init zsh)"
 eval "$(stooges shell-init bash)"
 ```
 
-After that, successful single-workspace `stooges add` commands will automatically `cd` into the created workspace. Pass `--no-cd` any time you want to stay where you are.
+After that, successful single-workspace `stooges add`, `stooges branch`, `stooges fork`, and `stooges track` commands will automatically `cd` into the created workspace. Pass `--no-cd` any time you want to stay where you are.
 
 ### What `init` does
 
@@ -111,7 +111,7 @@ trash feature-x
 ```
 
 You can add a new workspace at any time with `stooges add`. The `-b` flag creates a branch named after the workspace, or use `--branch name` for a specific branch name.
-When `add` or `branch` clones from base, Stooges syncs the base repo first by default so new workspaces start from the latest base state; pass `--no-sync` to skip that.
+When plain `add` or `branch` clones from base, Stooges syncs the base repo first by default so new workspaces start from the latest base state; pass `--no-sync` to skip that. `add --track` does not auto-sync first.
 Use `stooges branch <branch>` to derive the workspace name from the branch suffix and create/switch that local branch automatically.
 Use `stooges fork <branch>` from inside a managed workspace to copy that workspace, keep its current changes, and then create the requested local branch in the new copy; it fails if that local branch already exists in the copied workspace.
 Use `--track <branch>` to track `origin/<branch>` in a newly created workspace (optionally with `--branch <local-name>`); it fails if `origin/<branch>` is missing or if the destination local branch already exists. Or use `stooges track <branch>` to derive the workspace name automatically.

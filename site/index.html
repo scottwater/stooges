@@ -528,7 +528,7 @@
       letter-spacing: 0.08em;
       margin-bottom: 0.3rem;
     }
-    .scene code {
+    .scene > code {
       display: block;
       font-family: 'Courier Prime', monospace;
       font-size: 0.85rem;
@@ -542,6 +542,17 @@
       font-size: 0.85rem;
       color: var(--light);
       font-style: italic;
+    }
+    .scene p code {
+      display: inline;
+      font-family: 'Courier Prime', monospace;
+      font-size: 0.95em;
+      color: var(--cream);
+      background: transparent;
+      padding: 0;
+      border: 0;
+      margin: 0;
+      white-space: nowrap;
     }
 
     /* ── Footer / Credits ───────────────────────────────────── */
@@ -754,7 +765,7 @@
       <div class="scene" data-scene="II.">
         <p class="scene-title">Add a Workspace</p>
         <code><span style="color:var(--mid)">$</span> stooges add feature-x -b</code>
-        <p>Creates a new workspace with its own branch. Base-derived <code>add</code> and <code>branch</code> runs sync first by default. Or use <code>stooges branch scott/aud-656</code>, <code>stooges fork scott/aud-656</code>, or <code>stooges track feature/x</code> to derive the workspace name automatically.</p>
+        <p>Creates a new workspace with its own branch. Base-derived <code>add</code> (except <code>--track</code>) and <code>branch</code> runs sync first by default. Or use <code>stooges branch scott/aud-656</code>, <code>stooges fork scott/aud-656</code>, or <code>stooges track feature/x</code> to derive the workspace name automatically.</p>
       </div>
       <div class="scene" data-scene="III.">
         <p class="scene-title">Work Independently</p>
@@ -794,7 +805,7 @@
       </div>
       <div class="command-card">
         <span class="cmd">stooges add</span>
-        <span class="cmd-desc">Create new workspaces with optional branches; syncs base first by default</span>
+        <span class="cmd-desc">Create new workspaces with optional branches; base-derived runs sync first by default except --track</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges branch</span>

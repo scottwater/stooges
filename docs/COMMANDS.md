@@ -61,7 +61,7 @@ Behavior:
 - `--branch <name>` checks out existing branch (or creates it when missing) in each new workspace.
 - `-b` / `--branch` (no value) uses workspace name as branch name.
 - Named `--branch` with no explicit workspace is allowed only when exactly one workspace is created.
-- `--track <branch>` tracks `origin/<branch>` in the new workspace and fails if remote branch is missing.
+- `--track <branch>` tracks `origin/<branch>` in the new workspace and fails if the remote branch is missing or the destination local branch already exists.
 - Auto-sync does not run for `--track` or for non-base `--source` values.
 - `--track` requires an explicit workspace name.
 - With `--track`, `--branch <name>` sets local branch name while tracking `origin/<track>`.

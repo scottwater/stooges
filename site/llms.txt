@@ -65,7 +65,7 @@ stooges init --confirm -m master
 stooges init --confirm --agents larry,moe
 ```
 
-Run from inside a git repo. Requires a clean working tree. The `--confirm` flag skips the interactive confirmation prompt.
+Run from inside a git repo. Requires the selected base branch to already be checked out and no unstaged changes. Staged changes are allowed, and git-ignored files are ignored as usual. The `--confirm` flag skips the interactive confirmation prompt.
 
 - Moves repo contents into `.stooges/` and locks it read-only.
 - Creates workspace clones as sibling directories.
@@ -175,7 +175,7 @@ Destructive. Reverses `init`: removes workspace clones, moves `.stooges/` back t
 # 1. Initialize (once, from inside the repo)
 stooges init --confirm
 
-# 2. (Optional) enable auto-cd for future add commands
+# 2. (Optional) enable auto-cd for future add/branch/fork/track commands
 # eval "$(stooges shell-init zsh)"
 
 # 3. Create a workspace for a task
