@@ -96,10 +96,10 @@ Changed your mind? `stooges undo` puts everything back the way it was.
 
 ```bash
 # create a new workspace with its own branch
-stooges add feature-x -b
+stooges add auto-cd -b
 
-# with shell integration enabled, you're dropped into feature-x automatically
-# otherwise: cd feature-x
+# with shell integration enabled, you're dropped into auto-cd automatically
+# otherwise: cd auto-cd
 # edit, commit, push — it's a full independent repo
 
 # keep workspaces up to date with your base branch
@@ -107,7 +107,7 @@ stooges rebase
 
 # done? push your branch and delete the workspace
 cd ..
-trash feature-x
+trash auto-cd
 ```
 
 You can add a new workspace at any time with `stooges add`. The `-b` flag creates a branch named after the workspace, or use `--branch name` for a specific branch name.
@@ -142,15 +142,15 @@ stooges shell-init zsh     # optional: print shell wrapper for auto-cd on add/br
 stooges                    # guided interactive mode
 stooges init               # initialize workspace layout
 
-stooges add                # create missing default workspaces
-stooges add moe            # create one workspace (auto-syncs base first)
-stooges add bob -b         # create workspace + branch named "bob" (auto-syncs base first)
-stooges add bob --branch x # create workspace + branch named "x"
-stooges add bob --track feature/foo              # track origin/feature/foo
-stooges add bob --track feature/foo --branch foo # local "foo" tracking origin/feature/foo
-stooges branch scott/aud-656                      # derive workspace "aud-656" and create/switch branch scott/aud-656
-stooges fork scott/aud-656                        # from inside a managed workspace, copy it and branch from that current state
-stooges track feature/foo                         # derive workspace "foo" and track origin/feature/foo
+stooges add                         # create missing default workspaces
+stooges add moe                     # create one workspace (auto-syncs base first)
+stooges add auto-cd -b              # create workspace + branch named "auto-cd" (auto-syncs base first)
+stooges add auto-cd --branch scott/auto-cd        # create workspace + branch named "scott/auto-cd"
+stooges add shell-init --track feature/shell-init # track origin/feature/shell-init
+stooges add shell-init --track feature/shell-init --branch shell-init # local "shell-init" tracking origin/feature/shell-init
+stooges branch scott/auto-cd        # derive workspace "auto-cd" and create/switch branch scott/auto-cd
+stooges fork scott/auto-cd          # from inside a managed workspace, copy it and branch from that current state
+stooges track feature/shell-init    # derive workspace "shell-init" and track origin/feature/shell-init
 
 stooges sync               # sync base repo from remote
 stooges clean              # sync + prune stale refs

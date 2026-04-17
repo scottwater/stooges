@@ -764,12 +764,12 @@
       </div>
       <div class="scene" data-scene="II.">
         <p class="scene-title">Add a Workspace</p>
-        <code><span style="color:var(--mid)">$</span> stooges add feature-x -b</code>
-        <p>Creates a new workspace with its own branch. Base-derived <code>add</code> (except <code>--track</code>) and <code>branch</code> runs sync first by default. Or use <code>stooges branch scott/aud-656</code>, <code>stooges fork scott/aud-656</code>, or <code>stooges track feature/x</code> to derive the workspace name automatically.</p>
+        <code><span style="color:var(--mid)">$</span> stooges add auto-cd -b</code>
+        <p>Creates a new workspace with its own branch. Base-derived <code>add</code> (except <code>--track</code>) and <code>branch</code> runs sync first by default. Or use <code>stooges branch scott/auto-cd</code>, <code>stooges fork scott/auto-cd</code>, or <code>stooges track feature/shell-init</code> to derive the workspace name automatically.</p>
       </div>
       <div class="scene" data-scene="III.">
         <p class="scene-title">Work Independently</p>
-        <code><span style="color:var(--mid)">$</span> cd feature-x &amp;&amp; git commit -am "ship it"</code>
+        <code><span style="color:var(--mid)">$</span> cd auto-cd &amp;&amp; git commit -am "add shell wrapper"</code>
         <p>Or enable the optional shell wrapper and <code>stooges add</code>, <code>stooges branch</code>, <code>stooges fork</code>, or <code>stooges track</code> can drop you in automatically.</p>
       </div>
       <div class="scene" data-scene="IV.">
@@ -786,18 +786,18 @@
       <p class="reel-title">The Full Repertoire</p>
       <div class="scene" data-scene="EX.">
         <p class="scene-title">Branch Example</p>
-        <code><span style="color:var(--mid)">$</span> stooges branch scott/aud-656</code>
-        <p>Derives workspace <code>aud-656</code> and creates or switches local branch <code>scott/aud-656</code>.</p>
+        <code><span style="color:var(--mid)">$</span> stooges branch scott/auto-cd</code>
+        <p>Derives workspace <code>auto-cd</code> and creates or switches local branch <code>scott/auto-cd</code>.</p>
       </div>
       <div class="scene" data-scene="EY.">
         <p class="scene-title">Fork Example</p>
-        <code><span style="color:var(--mid)">$</span> cd larry &amp;&amp; stooges fork scott/aud-656</code>
-        <p>Copies the current managed workspace state into <code>aud-656</code> and creates local branch <code>scott/aud-656</code>; errors if that branch already exists in the copied workspace.</p>
+        <code><span style="color:var(--mid)">$</span> cd larry &amp;&amp; stooges fork scott/auto-cd</code>
+        <p>Copies the current managed workspace state into <code>auto-cd</code> and creates local branch <code>scott/auto-cd</code>; errors if that branch already exists in the copied workspace.</p>
       </div>
       <div class="scene" data-scene="EZ.">
         <p class="scene-title">Track Example</p>
-        <code><span style="color:var(--mid)">$</span> stooges track feature/foo</code>
-        <p>Derives workspace <code>foo</code> and checks out a local branch tracking <code>origin/feature/foo</code>; errors if the remote branch is missing or the destination local branch already exists.</p>
+        <code><span style="color:var(--mid)">$</span> stooges track feature/shell-init</code>
+        <p>Derives workspace <code>shell-init</code> and checks out a local branch tracking <code>origin/feature/shell-init</code>; errors if the remote branch is missing or the destination local branch already exists.</p>
       </div>
       <div class="command-card">
         <span class="cmd">stooges init</span>

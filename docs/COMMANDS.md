@@ -77,10 +77,10 @@ Examples:
 ```bash
 stooges add moe
 stooges add --source base
-stooges add bob -b
-stooges add bob --branch not_bob
-stooges add bob --track feature/foo
-stooges add bob --track feature/foo --branch local-foo
+stooges add auto-cd -b
+stooges add auto-cd --branch scott/auto-cd
+stooges add shell-init --track feature/shell-init
+stooges add shell-init --track feature/shell-init --branch shell-init
 ```
 
 ## `branch`
@@ -103,8 +103,8 @@ Behavior:
 Examples:
 
 ```bash
-stooges branch scott/aud-656
-stooges branch "release candidate: 2026-04-15"
+stooges branch scott/auto-cd
+stooges branch "shell init polish: 2026-04-15"
 ```
 
 ## `fork`
@@ -130,8 +130,8 @@ Examples:
 
 ```bash
 cd larry
-stooges fork scott/aud-656
-stooges fork "release candidate: 2026-04-15"
+stooges fork scott/auto-cd
+stooges fork "shell init polish: 2026-04-15"
 ```
 
 ## `track`
@@ -153,9 +153,9 @@ Behavior:
 Examples:
 
 ```bash
-stooges track feature/foo
-stooges track feature/foo --branch local-foo
-stooges track "release candidate: 2026-04-15"
+stooges track feature/shell-init
+stooges track feature/shell-init --branch shell-init
+stooges track "feature/shell-init-polish"
 ```
 
 ## `sync`
