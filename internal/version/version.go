@@ -1,4 +1,4 @@
 package version
 
 // Value is the user-facing CLI version.
-var Value = "0.80"
+var Value = "0.81"

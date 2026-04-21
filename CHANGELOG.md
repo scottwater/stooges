@@ -14,6 +14,7 @@ Newest entries are listed first. `Pending` covers changes on `main` that have no
 - `stooges add` now syncs the base repo before cloning from `.stooges` by default, with `--no-sync` available to opt out.
 - `stooges init` now applies stricter safeguards around the selected base branch before it mutates the workspace layout.
 - Fork and track flows now reject cases where the destination local branch already exists.
+- Command names now accept unique unambiguous prefixes, so `stooges b` / `stooges br` can dispatch to `stooges branch` while ambiguous prefixes still fail.
 
 ### Modified
 - Workspace detection for `fork` is more resilient when invoked from subdirectories, real paths, or failure-prone git states.
