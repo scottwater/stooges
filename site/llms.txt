@@ -40,6 +40,8 @@ Each workspace is a full git repo. You can cd into it, edit, commit, push, and r
 
 All commands below run without prompts when the noted flags are used. Every command must be run from the workspace root (the parent directory containing `.stooges/`), unless otherwise noted.
 
+Command names also accept unique unambiguous prefixes. Example: `stooges br scott/auto-cd` behaves like `stooges branch scott/auto-cd`. Ambiguous prefixes such as `stooges s` still fail.
+
 ### Check Platform Support
 
 ```bash

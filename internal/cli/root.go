@@ -57,6 +57,8 @@ func skipsPassiveUpdateCheck(cmd *cobra.Command) bool {
 func newRootCmd(svc engine.WorkspaceService, streams Streams, updaterClient Updater) *cobra.Command {
 	var showVersion bool
 
+	cobra.EnablePrefixMatching = true
+
 	if streams.In == nil {
 		streams.In = os.Stdin
 	}

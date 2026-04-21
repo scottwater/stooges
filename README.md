@@ -179,6 +179,8 @@ stooges undo --yes         # tear down workspace layout (destructive)
 - `upgrade` — install the latest GitHub release over the current binary
 - no args — interactive mode
 
+Command names also accept unique unambiguous prefixes, so `stooges b ...` and `stooges br ...` both dispatch to `stooges branch ...`. Ambiguous prefixes such as `stooges s` still fail.
+
 When a newer release exists, Stooges prints a one-line upgrade notice at most once per 24 hours:
 
 ```text

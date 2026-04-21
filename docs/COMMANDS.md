@@ -16,6 +16,8 @@ Shows preflight status first, then guided actions for `init`, `add`, `sync`, `cl
 
 All commands except `upgrade` perform a best-effort GitHub release check and print an update notice to stderr at most once per 24 hours.
 
+Command names also accept unique unambiguous prefixes, so `stooges br scott/auto-cd` behaves like `stooges branch scott/auto-cd`. Ambiguous prefixes such as `stooges s` still fail.
+
 ## `init`
 
 ```bash

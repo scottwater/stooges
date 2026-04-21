@@ -422,6 +422,48 @@ func TestBranchNoSyncSkipsAutomaticBaseSync(t *testing.T) {
 	}
 }
 
+func TestUniqueCommandPrefixesDispatchToBranch(t *testing.T) {
+	for _, prefix := range []string{"b", "br"} {
+		t.Run(prefix, func(t *testing.T) {
+			svc := &fakeService{}
+			out := &bytes.Buffer{}
+			errOut := &bytes.Buffer{}
+			cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+			cmd.SetArgs([]string{prefix, "scott/aud-656"})
+
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("execute failed: %v", err)
+			}
+			if !svc.makeCalled {
+				t.Fatal("expected unique prefix to dispatch to branch")
+			}
+			if svc.lastMake.Agent != "aud-656" || svc.lastMake.Branch != "scott/aud-656" {
+				t.Fatalf("expected derived workspace aud-656 with explicit branch, got %#v", svc.lastMake)
+			}
+		})
+	}
+}
+
+func TestAmbiguousCommandPrefixesReturnUnknownCommand(t *testing.T) {
+	for _, prefix := range []string{"s", "u"} {
+		t.Run(prefix, func(t *testing.T) {
+			svc := &fakeService{}
+			out := &bytes.Buffer{}
+			errOut := &bytes.Buffer{}
+			cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+			cmd.SetArgs([]string{prefix})
+
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatalf("expected ambiguous prefix %q to fail", prefix)
+			}
+			if !strings.Contains(err.Error(), `unknown command "`+prefix+`"`) {
+				t.Fatalf("expected unknown-command error for %q, got %v", prefix, err)
+			}
+		})
+	}
+}
+
 func TestForkCommandUsesCurrentWorkspaceAsSource(t *testing.T) {
 	svc := &fakeService{currentWorkspace: engine.CurrentWorkspace{Name: "larry", Path: t.TempDir(), WorkspaceRoot: "/tmp/workspace"}}
 	out := &bytes.Buffer{}
