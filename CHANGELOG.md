@@ -2,6 +2,22 @@
 
 Newest entries are listed first.
 
+## 0.82 — 2026-04-22
+
+### Added
+- `stooges pr [number]` to create a new workspace directly from an open GitHub pull request via the GitHub CLI.
+- Interactive open-PR selection for `stooges pr` with no arguments, including PR number, author, and title.
+- A `checkout PR` action in the no-argument interactive menu so PR-based workspace setup is available alongside the other guided flows.
+
+### Updated
+- PR flows now verify `gh auth status` up front and return a clearer authentication error when GitHub CLI is installed but not logged in.
+- Shell-driven auto-`cd` support and help text to include the new `pr` workflow.
+- Documentation and website command references to cover PR-based workspace creation.
+
+### Modified
+- PR picker rendering now constrains long titles and uses raw-terminal-safe line rendering so interactive selection stays readable.
+- PR checkout logic now prefers tracked-branch setup for same-repo pull requests and falls back to `gh pr checkout` for cross-repo pull requests.
+
 ## 0.81 — 2026-04-21
 
 ### Updated
