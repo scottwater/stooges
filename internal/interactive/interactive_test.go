@@ -1,9 +1,11 @@
 package interactive
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"regexp"
 	"strings"
 	"testing"
@@ -193,6 +195,56 @@ func TestRun_ConfiguredMenuShowsParityActions(t *testing.T) {
 		if !strings.Contains(menu, want) {
 			t.Fatalf("expected %q in menu, got %q", want, menu)
 		}
+	}
+	if strings.Contains(menu, "checkout PR") {
+		t.Fatalf("did not expect PR action without hooks, got %q", menu)
+	}
+}
+
+func TestRunWithHooks_ConfiguredMenuShowsPRAction(t *testing.T) {
+	svc := &fakeService{
+		doctor: model.DoctorReport{
+			Checks: []model.DoctorCheck{
+				{Name: "git", OK: true, Message: "git found"},
+				{Name: "cow_clone", OK: true, Message: "copy-on-write clone supported"},
+				{Name: "workspace", OK: true, Message: "workspace path is valid"},
+				{Name: "repo_resolution", OK: true, Message: "resolved base repo /tmp/.stooges"},
+			},
+		},
+	}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	if err := RunWithHooks(context.Background(), svc, strings.NewReader("0\n"), out, errOut, Hooks{RunPR: func(context.Context, *bufio.Reader, io.Writer, io.Writer) error { return nil }}); err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+	menu := stripANSI(out.String())
+	if !strings.Contains(menu, "checkout PR") {
+		t.Fatalf("expected PR action in menu, got %q", menu)
+	}
+}
+
+func TestRunWithHooks_PRFlow(t *testing.T) {
+	svc := &fakeService{
+		doctor: model.DoctorReport{
+			Checks: []model.DoctorCheck{
+				{Name: "git", OK: true, Message: "git found"},
+				{Name: "cow_clone", OK: true, Message: "copy-on-write clone supported"},
+				{Name: "workspace", OK: true, Message: "workspace path is valid"},
+				{Name: "repo_resolution", OK: true, Message: "resolved base repo /tmp/.stooges"},
+			},
+		},
+	}
+	called := 0
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	if err := RunWithHooks(context.Background(), svc, strings.NewReader("2\n0\n"), out, errOut, Hooks{RunPR: func(context.Context, *bufio.Reader, io.Writer, io.Writer) error {
+		called++
+		return nil
+	}}); err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+	if called != 1 {
+		t.Fatalf("expected PR flow to run once, got %d", called)
 	}
 }
 

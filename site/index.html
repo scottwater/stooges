@@ -765,12 +765,12 @@
       <div class="scene" data-scene="II.">
         <p class="scene-title">Add a Workspace</p>
         <code><span style="color:var(--mid)">$</span> stooges add auto-cd -b</code>
-        <p>Creates a new workspace with its own branch. Base-derived <code>add</code> (except <code>--track</code>) and <code>branch</code> runs sync first by default. Or use <code>stooges branch scott/auto-cd</code>, <code>stooges fork scott/auto-cd</code>, or <code>stooges track feature/shell-init</code> to derive the workspace name automatically.</p>
+        <p>Creates a new workspace with its own branch. Base-derived <code>add</code> (except <code>--track</code>) and <code>branch</code> runs sync first by default. Or use <code>stooges branch scott/auto-cd</code>, <code>stooges fork scott/auto-cd</code>, <code>stooges track feature/shell-init</code>, or <code>stooges pr 37</code> to derive the workspace name automatically.</p>
       </div>
       <div class="scene" data-scene="III.">
         <p class="scene-title">Work Independently</p>
         <code><span style="color:var(--mid)">$</span> cd auto-cd &amp;&amp; git commit -am "add shell wrapper"</code>
-        <p>Or enable the optional shell wrapper and <code>stooges add</code>, <code>stooges branch</code>, <code>stooges fork</code>, or <code>stooges track</code> can drop you in automatically.</p>
+        <p>Or enable the optional shell wrapper and <code>stooges add</code>, <code>stooges branch</code>, <code>stooges fork</code>, <code>stooges track</code>, or <code>stooges pr</code> can drop you in automatically.</p>
       </div>
       <div class="scene" data-scene="IV.">
         <p class="scene-title">Keep Everything Current</p>
@@ -800,6 +800,11 @@
         <code><span style="color:var(--mid)">$</span> stooges track feature/shell-init</code>
         <p>Derives workspace <code>shell-init</code> and checks out a local branch tracking <code>origin/feature/shell-init</code>; errors if the remote branch is missing or the destination local branch already exists.</p>
       </div>
+      <div class="scene" data-scene="FA.">
+        <p class="scene-title">PR Example</p>
+        <code><span style="color:var(--mid)">$</span> stooges pr 37</code>
+        <p>Looks up PR <code>#37</code> with the GitHub CLI, checks <code>gh auth status</code> first, derives a workspace name from the PR head branch, and checks out that PR in the new workspace. Run <code>stooges pr</code> with no number to choose from open PRs interactively.</p>
+      </div>
       <div class="command-card">
         <span class="cmd">stooges init</span>
         <span class="cmd-desc">Set up base repo &amp; default workspaces</span>
@@ -819,6 +824,10 @@
       <div class="command-card">
         <span class="cmd">stooges track</span>
         <span class="cmd-desc">Create a tracked workspace from a remote branch name</span>
+      </div>
+      <div class="command-card">
+        <span class="cmd">stooges pr</span>
+        <span class="cmd-desc">Create a workspace from a GitHub pull request via gh</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges sync</span>
@@ -842,7 +851,7 @@
       </div>
       <div class="command-card">
         <span class="cmd">stooges shell-init</span>
-        <span class="cmd-desc">Optional shell wrapper for auto-cd after add/branch/fork/track</span>
+        <span class="cmd-desc">Optional shell wrapper for auto-cd after add/branch/fork/track/pr</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges upgrade</span>
@@ -873,7 +882,7 @@
 
       <p class="install-or">Already installed? Run <code>stooges upgrade</code> to grab the latest release.</p>
 
-      <p class="install-or">Optional: enable auto-cd after <code>stooges add</code>, <code>stooges branch</code>, <code>stooges fork</code>, or <code>stooges track</code> by adding this to your shell profile:</p>
+      <p class="install-or">Optional: enable auto-cd after <code>stooges add</code>, <code>stooges branch</code>, <code>stooges fork</code>, <code>stooges track</code>, or <code>stooges pr</code> by adding this to your shell profile:</p>
 
       <div class="install-block" data-copy="eval &quot;$(stooges shell-init zsh)&quot;">
         <span class="prompt">$ </span>eval "$(stooges shell-init zsh)"

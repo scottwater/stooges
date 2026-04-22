@@ -12,7 +12,7 @@ go install github.com/scottwater/stooges/cmd/stooges@latest
 stooges
 ```
 
-Shows preflight status first, then guided actions for `init`, `add`, `sync`, `clean`, `unlock`, `lock`, `rebase`, `undo`, `doctor`.
+Shows preflight status first, then guided actions for `init`, `add`, `pr`, `sync`, `clean`, `unlock`, `lock`, `rebase`, `undo`, `doctor`.
 
 All commands except `upgrade` perform a best-effort GitHub release check and print an update notice to stderr at most once per 24 hours.
 
@@ -70,7 +70,7 @@ Behavior:
 - `--track` cannot be combined with `-b` (auto branch naming).
 - If all defaults exist, no-op with guidance message.
 - Never overwrites existing directories.
-- With shell integration enabled via `eval "$(stooges shell-init zsh)"` (or `bash`), `add` automatically `cd`s into the newly created workspace when exactly one workspace is created. The same auto-`cd` behavior applies to `branch`, `fork`, and `track`.
+- With shell integration enabled via `eval "$(stooges shell-init zsh)"` (or `bash`), `add` automatically `cd`s into the newly created workspace when exactly one workspace is created. The same auto-`cd` behavior applies to `branch`, `fork`, `track`, and `pr`.
 - `--no-cd` disables that redirect for a single invocation.
 - `--no-sync` skips the automatic base sync.
 
@@ -158,6 +158,31 @@ Examples:
 stooges track feature/shell-init
 stooges track feature/shell-init --branch shell-init
 stooges track "feature/shell-init-polish"
+```
+
+## `pr`
+
+```bash
+stooges pr [number] [--branch <name>] [--no-cd]
+```
+
+Behavior:
+- Requires the GitHub CLI (`gh`) in PATH and an authenticated GitHub session.
+- With a numeric argument, looks up that PR in the current repository and creates a workspace for it.
+- With no argument, lists open PRs in the current repository and lets you choose one interactively (arrow-key picker on a TTY; numbered fallback otherwise).
+- The PR list shows the PR number, author login, and title.
+- Same-repo PRs derive the workspace from the PR head branch and use tracked-branch setup, equivalent to `track` where possible.
+- Cross-repo PRs still derive the workspace from the PR head branch, but fall back to `gh pr checkout` inside the new workspace.
+- When derivation would be empty or reserved, falls back to `pr-<number>` for the workspace name.
+- `--branch <name>` overrides the local branch name used for the checkout.
+- `--no-cd` suppresses shell-wrapper auto-`cd`, same as `add`, `branch`, `fork`, and `track`.
+
+Examples:
+
+```bash
+stooges pr 37
+stooges pr 37 --branch review/pr-37
+stooges pr
 ```
 
 ## `sync`
@@ -268,9 +293,9 @@ stooges shell-init [bash|zsh|sh]
 
 Behavior:
 - Prints a shell wrapper function.
-- After `eval "$(stooges shell-init zsh)"`, successful single-workspace `stooges add`, `stooges branch`, `stooges fork`, and `stooges track` commands automatically `cd` into the created workspace.
+- After `eval "$(stooges shell-init zsh)"`, successful single-workspace `stooges add`, `stooges branch`, `stooges fork`, `stooges track`, and `stooges pr` commands automatically `cd` into the created workspace.
 - Uses the resolved workspace root, so calling these commands from inside another managed workspace still lands in the new workspace root path.
-- `--no-cd` on `add`, `branch`, `fork`, or `track` suppresses the redirect.
+- `--no-cd` on `add`, `branch`, `fork`, `track`, or `pr` suppresses the redirect.
 
 ## `version`
 

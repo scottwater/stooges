@@ -51,7 +51,7 @@ You can also just run `stooges` with no arguments for an interactive guided mode
 
 This feature is optional.
 
-By default, the `stooges` binary cannot change your current shell directory on its own, so if you want successful single-workspace `stooges add`, `stooges branch`, `stooges fork`, or `stooges track` commands to automatically drop you into the new workspace, enable the shell wrapper once in your shell profile:
+By default, the `stooges` binary cannot change your current shell directory on its own, so if you want successful single-workspace `stooges add`, `stooges branch`, `stooges fork`, `stooges track`, or `stooges pr` commands to automatically drop you into the new workspace, enable the shell wrapper once in your shell profile:
 
 ```bash
 # zsh
@@ -63,7 +63,7 @@ eval "$(stooges shell-init zsh)"
 eval "$(stooges shell-init bash)"
 ```
 
-After that, successful single-workspace `stooges add`, `stooges branch`, `stooges fork`, and `stooges track` commands will automatically `cd` into the created workspace. Pass `--no-cd` any time you want to stay where you are.
+After that, successful single-workspace `stooges add`, `stooges branch`, `stooges fork`, `stooges track`, and `stooges pr` commands will automatically `cd` into the created workspace. Pass `--no-cd` any time you want to stay where you are.
 
 ### What `init` does
 
@@ -115,7 +115,8 @@ When plain `add` or `branch` clones from base, Stooges syncs the base repo first
 Use `stooges branch <branch>` to derive the workspace name from the branch suffix and create/switch that local branch automatically.
 Use `stooges fork <branch>` from inside a managed workspace to copy that workspace, keep its current changes, and then create the requested local branch in the new copy; it fails if that local branch already exists in the copied workspace.
 Use `--track <branch>` to track `origin/<branch>` in a newly created workspace (optionally with `--branch <local-name>`); it fails if `origin/<branch>` is missing or if the destination local branch already exists. Or use `stooges track <branch>` to derive the workspace name automatically.
-If you optionally enable `eval "$(stooges shell-init zsh)"` (or `bash`), `stooges add`, `stooges branch`, `stooges fork`, and `stooges track` will automatically `cd` into the new workspace; pass `--no-cd` to stay where you are.
+Use `stooges pr <number>` to create a workspace for a GitHub pull request in the current repository. With no number, Stooges uses the GitHub CLI (`gh`) to list open PRs in the current repository, lets you pick one interactively, then creates the workspace and checks out that PR. Stooges checks `gh auth status` first and asks you to authenticate if needed. Same-repo PRs use tracked-branch setup; cross-repo PRs fall back to `gh pr checkout` in the new workspace.
+If you optionally enable `eval "$(stooges shell-init zsh)"` (or `bash`), `stooges add`, `stooges branch`, `stooges fork`, `stooges track`, and `stooges pr` will automatically `cd` into the new workspace; pass `--no-cd` to stay where you are.
 
 ## Keeping in sync
 
@@ -138,8 +139,8 @@ If you need to manually edit the base repo (e.g., resolve something), use `stoog
 stooges doctor             # check platform support
 stooges --version          # print installed version
 stooges upgrade            # replace current binary with latest release
-stooges shell-init zsh     # optional: print shell wrapper for auto-cd on add/branch/fork/track
-stooges                    # guided interactive mode
+stooges shell-init zsh     # optional: print shell wrapper for auto-cd on add/branch/fork/track/pr
+stooges                    # guided interactive mode (includes PR checkout)
 stooges init               # initialize workspace layout
 
 stooges add                         # create missing default workspaces
@@ -151,6 +152,8 @@ stooges add shell-init --track feature/shell-init --branch shell-init # local "s
 stooges branch scott/auto-cd        # derive workspace "auto-cd" and create/switch branch scott/auto-cd
 stooges fork scott/auto-cd          # from inside a managed workspace, copy it and branch from that current state
 stooges track feature/shell-init    # derive workspace "shell-init" and track origin/feature/shell-init
+stooges pr 37                       # create a workspace for PR #37
+stooges pr                          # choose an open PR interactively with gh, then create a workspace for it
 
 stooges sync               # sync base repo from remote
 stooges clean              # sync + prune stale refs
@@ -167,6 +170,7 @@ stooges undo --yes         # tear down workspace layout (destructive)
 - `branch` — create a workspace using a derived name and an explicit local branch
 - `fork` — copy the current managed workspace into a new derived workspace and branch from there
 - `track` — create a tracked workspace using a derived workspace name
+- `pr` — create a workspace for a GitHub pull request using `gh`
 - `sync` — fetch & update the base repo
 - `clean` — sync + prune stale remote-tracking refs
 - `rebase` — sync base + rebase workspace branches
@@ -174,7 +178,7 @@ stooges undo --yes         # tear down workspace layout (destructive)
 - `unlock` / `lock` — toggle read-only protection on the base
 - `undo` (alias: `remove`) — tear down and restore original layout
 - `doctor` — check platform support and workspace health
-- `shell-init` — print shell wrapper for auto-cd on `add`, `branch`, `fork`, and `track`
+- `shell-init` — print shell wrapper for auto-cd on `add`, `branch`, `fork`, `track`, and `pr`
 - `version` (or `--version`) — print installed version
 - `upgrade` — install the latest GitHub release over the current binary
 - no args — interactive mode

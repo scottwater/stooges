@@ -27,6 +27,9 @@ type fakeService struct {
 	lastInit                   model.InitOptions
 	lastMake                   model.MakeOptions
 	lastSync                   model.SyncOptions
+	makeFn                     func(context.Context, model.MakeOptions) (model.MakeResult, error)
+	makeResult                 model.MakeResult
+	makeErr                    error
 	syncErr                    error
 	preview                    string
 	currentWorkspace           engine.CurrentWorkspace
@@ -44,6 +47,15 @@ func (f *fakeService) Make(ctx context.Context, opts model.MakeOptions) (model.M
 	f.makeCalled = true
 	f.lastCtx = ctx
 	f.lastMake = opts
+	if f.makeFn != nil {
+		return f.makeFn(ctx, opts)
+	}
+	if f.makeErr != nil {
+		return model.MakeResult{}, f.makeErr
+	}
+	if len(f.makeResult.Created) > 0 || strings.TrimSpace(f.makeResult.WorkspaceRoot) != "" || strings.TrimSpace(f.makeResult.Guidance) != "" {
+		return f.makeResult, nil
+	}
 	created := "larry"
 	if strings.TrimSpace(opts.Agent) != "" {
 		created = strings.TrimSpace(opts.Agent)
@@ -592,6 +604,9 @@ func TestNoArgsRunsInteractiveAndDoctor(t *testing.T) {
 	}
 	if !svc.doctorCalled {
 		t.Fatal("expected doctor call from interactive startup")
+	}
+	if !strings.Contains(out.String(), "checkout PR") {
+		t.Fatalf("expected interactive menu to include PR action, got %q", out.String())
 	}
 }
 

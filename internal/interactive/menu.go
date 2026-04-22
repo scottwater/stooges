@@ -15,6 +15,7 @@ type action string
 const (
 	actionInit   action = "init"
 	actionMake   action = "make"
+	actionPR     action = "pr"
 	actionSync   action = "sync"
 	actionClean  action = "clean"
 	actionUnlock action = "unlock"
@@ -30,8 +31,8 @@ type menuEntry struct {
 	action action
 }
 
-func promptAction(reader *bufio.Reader, out io.Writer, report model.DoctorReport) (action, error) {
-	menu := buildMenu(report)
+func promptAction(reader *bufio.Reader, out io.Writer, report model.DoctorReport, opts Hooks) (action, error) {
+	menu := buildMenu(report, opts)
 	theme := newTheme(out)
 
 	fmt.Fprintln(out, "")
@@ -58,7 +59,7 @@ func promptAction(reader *bufio.Reader, out io.Writer, report model.DoctorReport
 	return menu[n-1].action, nil
 }
 
-func buildMenu(report model.DoctorReport) []menuEntry {
+func buildMenu(report model.DoctorReport, opts Hooks) []menuEntry {
 	if report.HasCriticalPreflightFailure() {
 		return []menuEntry{
 			{label: "doctor", action: actionDoctor},
@@ -72,16 +73,22 @@ func buildMenu(report model.DoctorReport) []menuEntry {
 		}
 	}
 
-	return []menuEntry{
+	menu := []menuEntry{
 		{label: "add workspace", action: actionMake},
-		{label: "sync", action: actionSync},
-		{label: "clean", action: actionClean},
-		{label: "unlock", action: actionUnlock},
-		{label: "lock", action: actionLock},
-		{label: "rebase", action: actionRebase},
-		{label: "undo workspace layout", action: actionUndo},
-		{label: "doctor", action: actionDoctor},
 	}
+	if opts.RunPR != nil {
+		menu = append(menu, menuEntry{label: "checkout PR", action: actionPR})
+	}
+	menu = append(menu,
+		menuEntry{label: "sync", action: actionSync},
+		menuEntry{label: "clean", action: actionClean},
+		menuEntry{label: "unlock", action: actionUnlock},
+		menuEntry{label: "lock", action: actionLock},
+		menuEntry{label: "rebase", action: actionRebase},
+		menuEntry{label: "undo workspace layout", action: actionUndo},
+		menuEntry{label: "doctor", action: actionDoctor},
+	)
+	return menu
 }
 
 func isUnconfiguredWorkspace(report model.DoctorReport) bool {

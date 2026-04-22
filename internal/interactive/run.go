@@ -16,7 +16,15 @@ type initBranchPreviewer interface {
 	PreviewInitBranch(context.Context) (string, error)
 }
 
+type Hooks struct {
+	RunPR func(context.Context, *bufio.Reader, io.Writer, io.Writer) error
+}
+
 func Run(ctx context.Context, svc engine.WorkspaceService, in io.Reader, out, errOut io.Writer) error {
+	return RunWithHooks(ctx, svc, in, out, errOut, Hooks{})
+}
+
+func RunWithHooks(ctx context.Context, svc engine.WorkspaceService, in io.Reader, out, errOut io.Writer, opts Hooks) error {
 	reader := bufio.NewReader(in)
 	theme := newTheme(out)
 	errTheme := newTheme(errOut)
@@ -31,7 +39,7 @@ func Run(ctx context.Context, svc engine.WorkspaceService, in io.Reader, out, er
 	}
 
 	for {
-		selected, err := promptAction(reader, out, doc)
+		selected, err := promptAction(reader, out, doc, opts)
 		if err != nil {
 			fmt.Fprintf(errOut, "%s %v\n", errTheme.error.Render("Whoop-whoop. Invalid pick:"), err)
 			continue
@@ -84,6 +92,16 @@ func Run(ctx context.Context, svc engine.WorkspaceService, in io.Reader, out, er
 			}
 			if result.Guidance != "" {
 				fmt.Fprintln(out, theme.hint.Render(result.Guidance))
+			}
+			doc, _ = svc.Doctor(ctx, model.DoctorOptions{})
+		case actionPR:
+			if opts.RunPR == nil {
+				fmt.Fprintln(errOut, errTheme.error.Render("PR flow unavailable in this session."))
+				continue
+			}
+			if err := opts.RunPR(ctx, reader, out, errOut); err != nil {
+				fmt.Fprintf(errOut, "%s %v\n", errTheme.error.Render("PR checkout failed:"), err)
+				continue
 			}
 			doc, _ = svc.Doctor(ctx, model.DoctorOptions{})
 		case actionUnlock:

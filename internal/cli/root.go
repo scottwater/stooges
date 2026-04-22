@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -19,15 +20,34 @@ type Streams struct {
 	ErrOut io.Writer
 }
 
+type interactivePRInput struct {
+	raw      io.Reader
+	buffered *bufio.Reader
+}
+
+func (in interactivePRInput) Read(p []byte) (int, error) {
+	if in.buffered == nil {
+		return 0, io.EOF
+	}
+	return in.buffered.Read(p)
+}
+
+func (in interactivePRInput) RawReader() io.Reader {
+	if in.raw != nil {
+		return in.raw
+	}
+	return in.buffered
+}
+
 func NewRootCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
-	return newRootCmd(svc, streams, noopUpdater{})
+	return newRootCmd(svc, streams, noopUpdater{}, newSystemGitHubPRClient(), defaultGitHubRepoResolver())
 }
 
 func NewRootCmdWithUpdater(svc engine.WorkspaceService, streams Streams, updaterClient Updater) *cobra.Command {
 	if updaterClient == nil {
 		updaterClient = noopUpdater{}
 	}
-	return newRootCmd(svc, streams, updaterClient)
+	return newRootCmd(svc, streams, updaterClient, newSystemGitHubPRClient(), defaultGitHubRepoResolver())
 }
 
 type Updater interface {
@@ -54,7 +74,7 @@ func skipsPassiveUpdateCheck(cmd *cobra.Command) bool {
 	}
 }
 
-func newRootCmd(svc engine.WorkspaceService, streams Streams, updaterClient Updater) *cobra.Command {
+func newRootCmd(svc engine.WorkspaceService, streams Streams, updaterClient Updater, gh githubPRClient, repoResolver githubRepoResolver) *cobra.Command {
 	var showVersion bool
 
 	cobra.EnablePrefixMatching = true
@@ -85,7 +105,15 @@ func newRootCmd(svc engine.WorkspaceService, streams Streams, updaterClient Upda
 				fmt.Fprintln(streams.Out, version.Value)
 				return nil
 			}
-			return interactive.Run(cmd.Context(), svc, streams.In, streams.Out, streams.ErrOut)
+			return interactive.RunWithHooks(cmd.Context(), svc, streams.In, streams.Out, streams.ErrOut, interactive.Hooks{
+				RunPR: func(ctx context.Context, reader *bufio.Reader, out, errOut io.Writer) error {
+					return runPRAction(ctx, svc, Streams{
+						In:     interactivePRInput{raw: streams.In, buffered: reader},
+						Out:    out,
+						ErrOut: errOut,
+					}, gh, repoResolver, nil, "", false)
+				},
+			})
 		},
 	}
 
@@ -93,6 +121,7 @@ func newRootCmd(svc engine.WorkspaceService, streams Streams, updaterClient Upda
 	root.AddCommand(newInitCmd(svc, streams))
 	root.AddCommand(newMakeCmd(svc, streams))
 	root.AddCommand(newTrackCmd(svc, streams))
+	root.AddCommand(newPRCmd(svc, streams, gh, repoResolver))
 	root.AddCommand(newBranchCmd(svc, streams))
 	root.AddCommand(newForkCmd(svc, streams))
 	root.AddCommand(newSyncCmd(svc, streams))
