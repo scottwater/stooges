@@ -167,12 +167,15 @@ stooges fork scott/auto-cd          # from inside a managed workspace, copy it a
 stooges track feature/shell-init    # derive workspace "shell-init" and track origin/feature/shell-init
 stooges pr 37                       # create a workspace for PR #37
 stooges pr                          # choose an open PR interactively with gh, then create a workspace for it
+stooges pr 37 --no-setup            # skip configured setup hook for this PR workspace
+stooges branch scott/auto-cd --rollback-on-setup-failure # remove created workspace if setup fails
 
 stooges sync               # sync base repo from remote
 stooges clean              # sync + prune stale refs
 stooges rebase --prune     # sync + rebase workspaces onto base
 stooges list               # list base + workspaces with branch and latest commit
-stooges trash auto-cd      # run teardown hook, then move workspace to Trash
+stooges trash auto-cd      # preflight removal, run teardown hook, then move workspace to Trash
+stooges trash auto-cd --force # permanently delete if trash is unavailable; warn if forced past teardown failure
 
 stooges undo --yes         # tear down workspace layout (destructive)
 ```
@@ -180,16 +183,16 @@ stooges undo --yes         # tear down workspace layout (destructive)
 ## Commands
 
 - `init` — initialize the workspace layout
-- `add` — create workspaces
-- `branch` — create a workspace using a derived name and an explicit local branch
-- `fork` — copy the current managed workspace into a new derived workspace and branch from there
-- `track` — create a tracked workspace using a derived workspace name
-- `pr` — create a workspace for a GitHub pull request using `gh`
+- `add` — create workspaces; supports setup hooks plus `--no-setup` / `--rollback-on-setup-failure`
+- `branch` — create a workspace using a derived name and an explicit local branch; supports setup controls
+- `fork` — copy the current managed workspace into a new derived workspace and branch from there; supports setup controls
+- `track` — create a tracked workspace using a derived workspace name; supports setup controls
+- `pr` — create a workspace for a GitHub pull request using `gh`; cross-repo setup runs after checkout succeeds
 - `sync` — fetch & update the base repo
 - `clean` — sync + prune stale remote-tracking refs
 - `rebase` — sync base + rebase workspace branches
 - `list` (`ls`) — show base + managed workspaces with git head info
-- `trash` — run teardown hook and move a managed workspace to Trash
+- `trash` — preflight removal, run teardown hook, and move a managed workspace to Trash; `--force` permanently deletes when needed
 - `unlock` / `lock` — toggle read-only protection on the base
 - `undo` (alias: `remove`) — tear down and restore original layout
 - `doctor` — check platform support and workspace health

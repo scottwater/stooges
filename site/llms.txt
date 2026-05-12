@@ -88,8 +88,11 @@ stooges fork scott/auto-cd
 stooges track feature/shell-init
 stooges pr 37
 stooges pr
+stooges pr 37 --no-setup
+stooges branch scott/auto-cd --rollback-on-setup-failure
 stooges add --source base
 stooges trash auto-cd
+stooges trash auto-cd --force
 ```
 
 - `stooges add <name>` creates one workspace. Fails if it already exists.
@@ -110,11 +113,13 @@ stooges trash auto-cd
 - `fork` fails if the requested local branch already exists in the copied workspace.
 - `--source <workspace>` clones from a specific workspace instead of base (default: base).
 - Auto-sync does not run for `track`, `fork`, or non-base `--source` values.
-- Optional `setupScript` and `teardownScript` entries in `.stooges-metadata.json` configure workspace hooks. Relative paths resolve from the workspace root. Setup runs after clone/branch checkout; teardown runs before `stooges trash <workspace>`.
+- Optional `setupScript` and `teardownScript` entries in `.stooges-metadata.json` configure workspace hooks. Add them to the existing metadata and keep required fields such as `mainBranch` and `managedWorkspaces`.
+- Complete hook metadata example: `{ "mainBranch": "main", "managedWorkspaces": ["larry", "curly", "moe"], "setupScript": "scripts/stooges-setup.sh", "teardownScript": "scripts/stooges-teardown.sh" }`.
+- Relative hook paths resolve from the workspace root. Setup runs after clone/branch checkout, and after successful `gh pr checkout` for cross-repo PRs. Teardown runs before `stooges trash <workspace>`.
 - Hook env: `STOOGES_CWD`, `STOOGES_MAIN`, `STOOGES_SOURCE`, `STOOGES_BRANCH`, `STOOGES_FOLDER`, `STOOGES_FOLDER_PATH`.
 - `add`, `branch`, `fork`, `track`, and `pr` accept `--no-setup` and `--rollback-on-setup-failure`.
 - Optional shell integration can auto-`cd` into the new workspace after successful single-workspace `stooges add`, `stooges branch`, `stooges fork`, `stooges track`, or `stooges pr` runs.
-- Setup example: `eval "$(stooges shell-init zsh)"` (or `bash`).
+- Shell integration example: `eval "$(stooges shell-init zsh)"` (or `bash`).
 - This is optional; without it, users can just `cd <workspace>` manually.
 
 ### Sync Base Repo

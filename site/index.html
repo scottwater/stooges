@@ -805,17 +805,22 @@
         <code><span style="color:var(--mid)">$</span> stooges pr 37</code>
         <p>Looks up PR <code>#37</code> with the GitHub CLI, checks <code>gh auth status</code> first, derives a workspace name from the PR head branch, and checks out that PR in the new workspace. Cross-repo setup runs only after checkout succeeds. Run <code>stooges pr</code> with no number to choose from open PRs interactively.</p>
       </div>
+      <div class="scene" data-scene="FB.">
+        <p class="scene-title">Hooks &amp; Cleanup</p>
+        <code><span style="color:var(--mid)">$</span> stooges trash auto-cd --force</code>
+        <p>Add <code>setupScript</code> and <code>teardownScript</code> to the existing <code>.stooges-metadata.json</code> to automate per-workspace setup and cleanup. Setup runs after checkout; pass <code>--no-setup</code> or <code>--rollback-on-setup-failure</code> on add/branch/fork/track/pr when needed. Trash preflights removal, runs teardown, then uses Trash or forced deletion.</p>
+      </div>
       <div class="command-card">
         <span class="cmd">stooges init</span>
         <span class="cmd-desc">Set up base repo &amp; default workspaces</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges add</span>
-        <span class="cmd-desc">Create new workspaces with optional branches; base-derived runs sync first by default except --track</span>
+        <span class="cmd-desc">Create workspaces with optional branches and setup controls; base-derived syncs first except --track</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges branch</span>
-        <span class="cmd-desc">Create a workspace from a branch name; syncs base first by default</span>
+        <span class="cmd-desc">Create a workspace from a branch name; syncs base first and supports setup controls</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges fork</span>
@@ -823,7 +828,7 @@
       </div>
       <div class="command-card">
         <span class="cmd">stooges track</span>
-        <span class="cmd-desc">Create a tracked workspace from a remote branch name</span>
+        <span class="cmd-desc">Create a tracked workspace from a remote branch name; supports setup controls</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges pr</span>
@@ -847,7 +852,7 @@
       </div>
       <div class="command-card">
         <span class="cmd">stooges trash</span>
-        <span class="cmd-desc">Preflight removal, run teardown, then move a managed workspace to Trash</span>
+        <span class="cmd-desc">Preflight removal, run teardown, then move to Trash or force-delete</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges doctor</span>
