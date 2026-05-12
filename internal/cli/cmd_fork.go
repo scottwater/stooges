@@ -18,6 +18,8 @@ type currentWorkspaceResolver interface {
 
 func newForkCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	var noCD bool
+	var noSetup bool
+	var rollbackOnSetupFailure bool
 
 	cmd := &cobra.Command{
 		Use:   "fork <branch>",
@@ -47,11 +49,13 @@ func newForkCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 				return err
 			}
 			result, err := svc.Make(cmd.Context(), model.MakeOptions{
-				Agent:            workspace,
-				Source:           current.Name,
-				Branch:           branch,
-				BranchAuto:       false,
-				RequireNewBranch: true,
+				Agent:                  workspace,
+				Source:                 current.Name,
+				Branch:                 branch,
+				BranchAuto:             false,
+				RequireNewBranch:       true,
+				NoSetup:                noSetup,
+				RollbackOnSetupFailure: rollbackOnSetupFailure,
 			})
 			if err != nil {
 				return err
@@ -70,6 +74,8 @@ func newForkCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&noCD, "no-cd", false, "Stay in the current directory even when shell integration is enabled")
+	cmd.Flags().BoolVar(&noSetup, "no-setup", false, "Skip the configured setup script for this fork workspace")
+	cmd.Flags().BoolVar(&rollbackOnSetupFailure, "rollback-on-setup-failure", false, "Remove the created fork workspace if the setup script fails")
 	return cmd
 }
 

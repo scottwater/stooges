@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -71,6 +72,7 @@ type fakeGit struct {
 	currentBranch        string
 	currentBranchByRepo  map[string]string
 	branchNameByRepo     map[string]string
+	branchNameErr        error
 	headShortByRepo      map[string]string
 	headSubjectByRepo    map[string]string
 	headErr              error
@@ -115,6 +117,9 @@ func (f *fakeGit) CurrentBranch(_ context.Context, repo string) (string, error) 
 }
 
 func (f *fakeGit) BranchName(_ context.Context, repo string) (string, error) {
+	if f.branchNameErr != nil {
+		return "", f.branchNameErr
+	}
 	if f.branchNameByRepo != nil {
 		if branch, ok := f.branchNameByRepo[repo]; ok {
 			return branch, nil
@@ -508,6 +513,349 @@ func TestMakeNoAgentGuidanceWhenAllExist(t *testing.T) {
 	}
 }
 
+func TestTrashForceRemovesWorkspaceAndMetadata(t *testing.T) {
+	workspace := t.TempDir()
+	mustSetupConfiguredWorkspace(t, workspace, "main", "moe", "larry")
+	mustWriteFile(t, filepath.Join(workspace, "moe", "README.md"), []byte("ok"))
+	t.Setenv("PATH", t.TempDir())
+
+	svc := newTestService(t, filepath.Join(workspace, "moe"), &fakeGit{topLevel: filepath.Join(workspace, "moe")})
+	res, err := svc.Trash(context.Background(), model.TrashOptions{Workspace: "moe", Force: true})
+	if err != nil {
+		t.Fatalf("trash failed: %v", err)
+	}
+	if res.Workspace != "moe" || res.Removal != "delete" {
+		t.Fatalf("unexpected result: %#v", res)
+	}
+	if pathExists(filepath.Join(workspace, "moe")) {
+		t.Fatal("expected workspace removed")
+	}
+	layout, err := loadWorkspaceLayout(workspace)
+	if err != nil {
+		t.Fatalf("load layout: %v", err)
+	}
+	if slices.Contains(layout.ManagedWorkspaces, "moe") {
+		t.Fatalf("expected metadata to remove moe, got %#v", layout.ManagedWorkspaces)
+	}
+	if !slices.Contains(layout.ManagedWorkspaces, "larry") {
+		t.Fatalf("expected metadata to retain larry, got %#v", layout.ManagedWorkspaces)
+	}
+}
+
+func TestTrashRequiresTrashCommandUnlessForced(t *testing.T) {
+	workspace := t.TempDir()
+	mustSetupConfiguredWorkspace(t, workspace, "main", "moe")
+	t.Setenv("PATH", t.TempDir())
+
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace})
+	_, err := svc.Trash(context.Background(), model.TrashOptions{Workspace: "moe"})
+	if err == nil || !apperrors.IsKind(err, apperrors.KindInvalidInput) {
+		t.Fatalf("expected invalid input when trash is missing, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "`trash` command not found") {
+		t.Fatalf("expected missing trash error, got %v", err)
+	}
+	if !pathExists(filepath.Join(workspace, "moe")) {
+		t.Fatal("expected workspace left in place")
+	}
+}
+
+func TestTrashPreflightsTrashCommandBeforeTeardown(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main", "moe")
+	layout.TeardownScript = "teardown.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	logPath := filepath.Join(workspace, "teardown.log")
+	scriptPath := filepath.Join(workspace, "teardown.sh")
+	mustWriteFile(t, scriptPath, []byte("#!/bin/sh\necho ran > '"+logPath+"'\n"))
+	if err := os.Chmod(scriptPath, 0o755); err != nil {
+		t.Fatalf("chmod teardown script: %v", err)
+	}
+	t.Setenv("PATH", t.TempDir())
+
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace})
+	_, err := svc.Trash(context.Background(), model.TrashOptions{Workspace: "moe"})
+	if err == nil || !strings.Contains(err.Error(), "`trash` command not found") {
+		t.Fatalf("expected missing trash error, got %v", err)
+	}
+	if pathExists(logPath) {
+		t.Fatal("teardown should not run when removal cannot proceed")
+	}
+	if !pathExists(filepath.Join(workspace, "moe")) {
+		t.Fatal("expected workspace left in place")
+	}
+}
+
+func TestTrashRejectsInvalidMissingAndUnmanagedWorkspaces(t *testing.T) {
+	workspace := t.TempDir()
+	mustSetupConfiguredWorkspace(t, workspace, "main", "moe", "larry")
+	for _, name := range []string{"base", ".stooges", "../outside"} {
+		svc := newTestService(t, workspace, &fakeGit{topLevel: workspace})
+		_, err := svc.Trash(context.Background(), model.TrashOptions{Workspace: name, Force: true})
+		if err == nil || !apperrors.IsKind(err, apperrors.KindInvalidInput) {
+			t.Fatalf("expected invalid input for %q, got %v", name, err)
+		}
+	}
+
+	unmanaged := filepath.Join(workspace, "shemp")
+	if err := os.MkdirAll(unmanaged, 0o755); err != nil {
+		t.Fatalf("make unmanaged sibling: %v", err)
+	}
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace})
+	_, err := svc.Trash(context.Background(), model.TrashOptions{Workspace: "shemp", Force: true})
+	if err == nil || !strings.Contains(err.Error(), "not managed") {
+		t.Fatalf("expected unmanaged workspace rejection, got %v", err)
+	}
+	if !pathExists(unmanaged) {
+		t.Fatal("unmanaged sibling should not be removed")
+	}
+
+	if err := os.RemoveAll(filepath.Join(workspace, "moe")); err != nil {
+		t.Fatalf("remove managed workspace: %v", err)
+	}
+	_, err = svc.Trash(context.Background(), model.TrashOptions{Workspace: "moe", Force: true})
+	if err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Fatalf("expected missing workspace rejection, got %v", err)
+	}
+	layout, loadErr := loadWorkspaceLayout(workspace)
+	if loadErr != nil {
+		t.Fatalf("load layout: %v", loadErr)
+	}
+	if !slices.Contains(layout.ManagedWorkspaces, "moe") {
+		t.Fatalf("metadata should remain unchanged for missing workspace, got %#v", layout.ManagedWorkspaces)
+	}
+}
+
+func TestTrashCommandFailureLeavesWorkspaceAndMetadata(t *testing.T) {
+	workspace := t.TempDir()
+	mustSetupConfiguredWorkspace(t, workspace, "main", "moe")
+	binDir := t.TempDir()
+	trashPath := filepath.Join(binDir, "trash")
+	mustWriteFile(t, trashPath, []byte("#!/bin/sh\necho nope >&2\nexit 42\n"))
+	if err := os.Chmod(trashPath, 0o755); err != nil {
+		t.Fatalf("chmod trash: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace})
+	_, err := svc.Trash(context.Background(), model.TrashOptions{Workspace: "moe"})
+	if err == nil || !strings.Contains(err.Error(), "trash workspace failed: nope") {
+		t.Fatalf("expected trash command failure, got %v", err)
+	}
+	if !pathExists(filepath.Join(workspace, "moe")) {
+		t.Fatal("expected workspace left in place")
+	}
+	layout, err := loadWorkspaceLayout(workspace)
+	if err != nil {
+		t.Fatalf("load layout: %v", err)
+	}
+	if !slices.Contains(layout.ManagedWorkspaces, "moe") {
+		t.Fatalf("metadata should retain moe when removal fails, got %#v", layout.ManagedWorkspaces)
+	}
+}
+
+func TestTrashUsesTrashCommandWhenAvailable(t *testing.T) {
+	workspace := t.TempDir()
+	mustSetupConfiguredWorkspace(t, workspace, "main", "moe")
+	binDir := t.TempDir()
+	logPath := filepath.Join(binDir, "trash.log")
+	trashPath := filepath.Join(binDir, "trash")
+	mustWriteFile(t, trashPath, []byte("#!/bin/sh\nprintf '%s\\n' \"$1\" > '"+logPath+"'\n/bin/rm -rf \"$1\"\n"))
+	if err := os.Chmod(trashPath, 0o755); err != nil {
+		t.Fatalf("chmod trash: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace})
+	res, err := svc.Trash(context.Background(), model.TrashOptions{Workspace: "moe"})
+	if err != nil {
+		t.Fatalf("trash failed: %v", err)
+	}
+	if res.Removal != "trash" {
+		t.Fatalf("expected trash removal, got %#v", res)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read trash log: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != filepath.Join(workspace, "moe") {
+		t.Fatalf("expected trash path %s, got %q", filepath.Join(workspace, "moe"), got)
+	}
+}
+
+func TestTrashRunsTeardownScriptBeforeRemoval(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main", "moe")
+	layout.TeardownScript = "teardown.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	logPath := filepath.Join(workspace, "teardown.log")
+	scriptPath := filepath.Join(workspace, "teardown.sh")
+	mustWriteFile(t, scriptPath, []byte(`#!/bin/sh
+{
+  printf 'folder=%s\n' "$STOOGES_FOLDER"
+  printf 'path=%s\n' "$STOOGES_FOLDER_PATH"
+  printf 'source=%s\n' "$STOOGES_SOURCE"
+  printf 'branch=%s\n' "$STOOGES_BRANCH"
+  test -d "$STOOGES_FOLDER_PATH" && printf 'exists=yes\n'
+} > "`+logPath+`"
+`))
+	if err := os.Chmod(scriptPath, 0o755); err != nil {
+		t.Fatalf("chmod teardown script: %v", err)
+	}
+	t.Setenv("PATH", t.TempDir())
+	git := &fakeGit{topLevel: workspace, branchNameByRepo: map[string]string{filepath.Join(workspace, "moe"): "feature/moe"}}
+
+	svc := newTestService(t, workspace, git)
+	res, err := svc.Trash(context.Background(), model.TrashOptions{Workspace: "moe", Force: true})
+	if err != nil {
+		t.Fatalf("trash failed: %v", err)
+	}
+	if res.Teardown != "ok" || res.Removal != "delete" {
+		t.Fatalf("unexpected trash result: %#v", res)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read teardown log: %v", err)
+	}
+	body := string(data)
+	for _, want := range []string{
+		"folder=moe",
+		"path=" + filepath.Join(workspace, "moe"),
+		"source=base",
+		"branch=feature/moe",
+		"exists=yes",
+	} {
+		if !strings.Contains(body, want+"\n") {
+			t.Fatalf("expected teardown log to contain %q, got:\n%s", want, body)
+		}
+	}
+}
+
+func TestTrashTeardownFailureLeavesWorkspaceByDefault(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main", "moe")
+	layout.TeardownScript = "teardown-fail.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	scriptPath := filepath.Join(workspace, "teardown-fail.sh")
+	mustWriteFile(t, scriptPath, []byte("#!/bin/sh\necho teardown exploded >&2\nexit 42\n"))
+	if err := os.Chmod(scriptPath, 0o755); err != nil {
+		t.Fatalf("chmod teardown script: %v", err)
+	}
+	binDir := t.TempDir()
+	trashPath := filepath.Join(binDir, "trash")
+	mustWriteFile(t, trashPath, []byte("#!/bin/sh\nexit 0\n"))
+	if err := os.Chmod(trashPath, 0o755); err != nil {
+		t.Fatalf("chmod trash: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace})
+	_, err := svc.Trash(context.Background(), model.TrashOptions{Workspace: "moe"})
+	if err == nil || !strings.Contains(err.Error(), "teardown failed; workspace left at") || !strings.Contains(err.Error(), "teardown exploded") {
+		t.Fatalf("expected teardown failure, got %v", err)
+	}
+	if !pathExists(filepath.Join(workspace, "moe")) {
+		t.Fatal("expected workspace left in place")
+	}
+	layout, err = loadWorkspaceLayout(workspace)
+	if err != nil {
+		t.Fatalf("load layout: %v", err)
+	}
+	if !slices.Contains(layout.ManagedWorkspaces, "moe") {
+		t.Fatalf("expected metadata to retain moe, got %#v", layout.ManagedWorkspaces)
+	}
+}
+
+func TestTrashTeardownBranchDetectionFailureLeavesWorkspace(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main", "moe")
+	layout.TeardownScript = "teardown.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	scriptPath := filepath.Join(workspace, "teardown.sh")
+	mustWriteFile(t, scriptPath, []byte("#!/bin/sh\nexit 0\n"))
+	if err := os.Chmod(scriptPath, 0o755); err != nil {
+		t.Fatalf("chmod teardown script: %v", err)
+	}
+	binDir := t.TempDir()
+	trashPath := filepath.Join(binDir, "trash")
+	mustWriteFile(t, trashPath, []byte("#!/bin/sh\nexit 0\n"))
+	if err := os.Chmod(trashPath, 0o755); err != nil {
+		t.Fatalf("chmod trash: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace, branchNameErr: errors.New("detached HEAD")})
+	_, err := svc.Trash(context.Background(), model.TrashOptions{Workspace: "moe"})
+	if err == nil || !strings.Contains(err.Error(), "detect branch for teardown") {
+		t.Fatalf("expected explicit branch detection error, got %v", err)
+	}
+	if !pathExists(filepath.Join(workspace, "moe")) {
+		t.Fatal("expected workspace left in place")
+	}
+}
+
+func TestTrashForceContinuesAfterTeardownFailure(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main", "moe")
+	layout.TeardownScript = "teardown-fail.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	scriptPath := filepath.Join(workspace, "teardown-fail.sh")
+	mustWriteFile(t, scriptPath, []byte("#!/bin/sh\nexit 42\n"))
+	if err := os.Chmod(scriptPath, 0o755); err != nil {
+		t.Fatalf("chmod teardown script: %v", err)
+	}
+	t.Setenv("PATH", t.TempDir())
+
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace})
+	res, err := svc.Trash(context.Background(), model.TrashOptions{Workspace: "moe", Force: true})
+	if err != nil {
+		t.Fatalf("trash failed: %v", err)
+	}
+	if res.Teardown != "failed-forced" || res.Removal != "delete" || res.TeardownError == "" {
+		t.Fatalf("unexpected trash result: %#v", res)
+	}
+	if pathExists(filepath.Join(workspace, "moe")) {
+		t.Fatal("expected workspace removed")
+	}
+	layout, err = loadWorkspaceLayout(workspace)
+	if err != nil {
+		t.Fatalf("load layout: %v", err)
+	}
+	if slices.Contains(layout.ManagedWorkspaces, "moe") {
+		t.Fatalf("expected metadata to remove moe, got %#v", layout.ManagedWorkspaces)
+	}
+}
+
+func TestRollbackWorkspaceCreationRemovesDirectoryAndMetadata(t *testing.T) {
+	workspace := t.TempDir()
+	mustSetupConfiguredWorkspace(t, workspace, "main", "moe", "larry")
+
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace})
+	if err := svc.RollbackWorkspaceCreation(context.Background(), "moe"); err != nil {
+		t.Fatalf("rollback failed: %v", err)
+	}
+	if pathExists(filepath.Join(workspace, "moe")) {
+		t.Fatal("expected rollback to remove workspace directory")
+	}
+	layout, err := loadWorkspaceLayout(workspace)
+	if err != nil {
+		t.Fatalf("load layout: %v", err)
+	}
+	if slices.Contains(layout.ManagedWorkspaces, "moe") || !slices.Contains(layout.ManagedWorkspaces, "larry") {
+		t.Fatalf("expected metadata to remove moe and keep larry, got %#v", layout.ManagedWorkspaces)
+	}
+}
+
 func TestMakeFailsWhenExplicitExists(t *testing.T) {
 	workspace := t.TempDir()
 	mustSetupConfiguredWorkspace(t, workspace, "main", "moe")
@@ -554,6 +902,215 @@ func TestMakeExplicitAgentBranchSwitchesExistingBranch(t *testing.T) {
 	}
 	if len(git.switchCreates) != 0 {
 		t.Fatalf("expected no branch create call, got %#v", git.switchCreates)
+	}
+}
+
+func TestMakeRunsSetupScriptWithWorkspaceEnv(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	layout.SetupScript = "scripts/setup.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	scriptPath := filepath.Join(workspace, "scripts", "setup.sh")
+	mustMkdirAll(t, filepath.Dir(scriptPath))
+	mustWriteFile(t, scriptPath, []byte(`#!/bin/sh
+{
+  printf 'cwd=%s\n' "$STOOGES_CWD"
+  printf 'main=%s\n' "$STOOGES_MAIN"
+  printf 'source=%s\n' "$STOOGES_SOURCE"
+  printf 'branch=%s\n' "$STOOGES_BRANCH"
+  printf 'folder=%s\n' "$STOOGES_FOLDER"
+  printf 'path=%s\n' "$STOOGES_FOLDER_PATH"
+  printf 'pwd=%s\n' "$(pwd)"
+} > "$STOOGES_FOLDER_PATH/setup.env"
+`))
+	if err := os.Chmod(scriptPath, 0o755); err != nil {
+		t.Fatalf("chmod setup script: %v", err)
+	}
+
+	cwd := filepath.Join(workspace, "subdir")
+	mustMkdirAll(t, cwd)
+	git := &fakeGit{
+		topLevel:           workspace,
+		branchExistsByName: map[string]bool{"feature/bob": true},
+	}
+	svc := NewServiceWithDeps(Dependencies{
+		CWD:            func() (string, error) { return cwd, nil },
+		Chdir:          func(string) error { return nil },
+		Cloner:         fakeCloner{},
+		Perms:          &fakePerms{},
+		Git:            git,
+		Preflight:      NewPreflightChecker(fakeCloner{}),
+		Resolver:       NewRepoResolver(git),
+		BranchDetector: NewBranchDetector(git),
+	})
+
+	_, err := svc.Make(context.Background(), model.MakeOptions{Agent: "bob", Source: "base", Branch: "feature/bob"})
+	if err != nil {
+		t.Fatalf("make failed: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, "bob", "setup.env"))
+	if err != nil {
+		t.Fatalf("read setup env: %v", err)
+	}
+	body := string(data)
+	for _, want := range []string{
+		"cwd=" + cwd,
+		"main=" + workspace,
+		"source=base",
+		"branch=feature/bob",
+		"folder=bob",
+		"path=" + filepath.Join(workspace, "bob"),
+	} {
+		if !strings.Contains(body, want+"\n") {
+			t.Fatalf("expected setup env to contain %q, got:\n%s", want, body)
+		}
+	}
+	if !strings.Contains(body, "/bob\n") {
+		t.Fatalf("expected setup script to run from workspace dir, got:\n%s", body)
+	}
+}
+
+func TestMakePlainAddSetupDetectsCurrentBranch(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	layout.SetupScript = "setup.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	scriptPath := filepath.Join(workspace, "setup.sh")
+	mustWriteFile(t, scriptPath, []byte("#!/bin/sh\nprintf 'branch=%s\\n' \"$STOOGES_BRANCH\" > \"$STOOGES_FOLDER_PATH/setup.env\"\n"))
+	if err := os.Chmod(scriptPath, 0o755); err != nil {
+		t.Fatalf("chmod setup script: %v", err)
+	}
+
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace, currentBranch: "main"})
+	_, err := svc.Make(context.Background(), model.MakeOptions{Agent: "bob", Source: "base"})
+	if err != nil {
+		t.Fatalf("make failed: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, "bob", "setup.env"))
+	if err != nil {
+		t.Fatalf("read setup env: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "branch=main" {
+		t.Fatalf("expected detected current branch, got %q", got)
+	}
+}
+
+func TestMakeDefaultSetupDetectsCurrentBranch(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	layout.SetupScript = "setup.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	scriptPath := filepath.Join(workspace, "setup.sh")
+	mustWriteFile(t, scriptPath, []byte("#!/bin/sh\nprintf 'branch=%s\\n' \"$STOOGES_BRANCH\" > \"$STOOGES_FOLDER_PATH/setup.env\"\n"))
+	if err := os.Chmod(scriptPath, 0o755); err != nil {
+		t.Fatalf("chmod setup script: %v", err)
+	}
+
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace, currentBranch: "main"})
+	res, err := svc.Make(context.Background(), model.MakeOptions{Source: "base"})
+	if err != nil {
+		t.Fatalf("make failed: %v", err)
+	}
+	if len(res.Created) != len(model.DefaultAgents) {
+		t.Fatalf("expected default agents created, got %#v", res.Created)
+	}
+	for _, agent := range model.DefaultAgents {
+		data, err := os.ReadFile(filepath.Join(workspace, agent, "setup.env"))
+		if err != nil {
+			t.Fatalf("read setup env for %s: %v", agent, err)
+		}
+		if got := strings.TrimSpace(string(data)); got != "branch=main" {
+			t.Fatalf("expected detected current branch for %s, got %q", agent, got)
+		}
+	}
+}
+
+func TestMakeSetupFailureLeavesWorkspaceManagedByDefault(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	layout.SetupScript = "setup-fail.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	scriptPath := filepath.Join(workspace, "setup-fail.sh")
+	mustWriteFile(t, scriptPath, []byte("#!/bin/sh\necho setup exploded >&2\nexit 42\n"))
+	if err := os.Chmod(scriptPath, 0o755); err != nil {
+		t.Fatalf("chmod setup script: %v", err)
+	}
+
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace})
+	_, err := svc.Make(context.Background(), model.MakeOptions{Agent: "bob", Source: "base"})
+	if err == nil || !strings.Contains(err.Error(), "setup failed; workspace left at") || !strings.Contains(err.Error(), "setup exploded") {
+		t.Fatalf("expected setup failure with retained workspace message, got %v", err)
+	}
+	if !pathExists(filepath.Join(workspace, "bob")) {
+		t.Fatal("expected failed setup workspace to remain")
+	}
+	updated, err := loadWorkspaceLayout(workspace)
+	if err != nil {
+		t.Fatalf("load layout: %v", err)
+	}
+	if !slices.Contains(updated.ManagedWorkspaces, "bob") {
+		t.Fatalf("expected failed setup workspace to be managed, got %#v", updated.ManagedWorkspaces)
+	}
+}
+
+func TestMakeSetupFailureRollbackFlagRemovesWorkspace(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	layout.SetupScript = "setup-fail.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	scriptPath := filepath.Join(workspace, "setup-fail.sh")
+	mustWriteFile(t, scriptPath, []byte("#!/bin/sh\nexit 42\n"))
+	if err := os.Chmod(scriptPath, 0o755); err != nil {
+		t.Fatalf("chmod setup script: %v", err)
+	}
+
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace})
+	_, err := svc.Make(context.Background(), model.MakeOptions{Agent: "bob", Source: "base", RollbackOnSetupFailure: true})
+	if err == nil || !strings.Contains(err.Error(), "setup failed; rolled back created workspace") {
+		t.Fatalf("expected rollback setup failure, got %v", err)
+	}
+	if pathExists(filepath.Join(workspace, "bob")) {
+		t.Fatal("expected failed setup workspace removed")
+	}
+	updated, err := loadWorkspaceLayout(workspace)
+	if err != nil {
+		t.Fatalf("load layout: %v", err)
+	}
+	if slices.Contains(updated.ManagedWorkspaces, "bob") {
+		t.Fatalf("expected metadata to exclude rolled-back workspace, got %#v", updated.ManagedWorkspaces)
+	}
+}
+
+func TestMakeNoSetupSkipsConfiguredSetupScript(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	layout.SetupScript = "setup-fail.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	scriptPath := filepath.Join(workspace, "setup-fail.sh")
+	mustWriteFile(t, scriptPath, []byte("#!/bin/sh\nexit 42\n"))
+	if err := os.Chmod(scriptPath, 0o755); err != nil {
+		t.Fatalf("chmod setup script: %v", err)
+	}
+
+	svc := newTestService(t, workspace, &fakeGit{topLevel: workspace})
+	_, err := svc.Make(context.Background(), model.MakeOptions{Agent: "bob", Source: "base", NoSetup: true})
+	if err != nil {
+		t.Fatalf("make failed: %v", err)
+	}
+	if !pathExists(filepath.Join(workspace, "bob")) {
+		t.Fatal("expected workspace created")
 	}
 }
 

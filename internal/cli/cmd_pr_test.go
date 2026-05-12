@@ -130,8 +130,8 @@ func TestPRCommandChecksOutCrossRepoPullRequest(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute failed: %v", err)
 	}
-	if svc.lastMake.Agent != "forked-fix" || svc.lastMake.Track != "" {
-		t.Fatalf("expected base workspace add before gh checkout, got %#v", svc.lastMake)
+	if svc.lastMake.Agent != "forked-fix" || svc.lastMake.Track != "" || !svc.lastMake.NoSetup {
+		t.Fatalf("expected setup-deferred base workspace add before gh checkout, got %#v", svc.lastMake)
 	}
 	if len(gh.checkoutCalls) != 1 {
 		t.Fatalf("expected one gh checkout call, got %#v", gh.checkoutCalls)
@@ -140,6 +140,53 @@ func TestPRCommandChecksOutCrossRepoPullRequest(t *testing.T) {
 	if call.repoPath != "/tmp/workspace/forked-fix" || call.number != 37 || call.branch != "" {
 		t.Fatalf("unexpected gh checkout call: %#v", call)
 	}
+	if !svc.setupCalled || svc.lastSetup.Workspace != "forked-fix" || svc.lastSetup.Source != "base" || svc.lastSetup.Branch != "" {
+		t.Fatalf("expected setup after successful checkout, got called=%v opts=%#v", svc.setupCalled, svc.lastSetup)
+	}
+}
+
+func TestPRCommandSetupFlagsPassThrough(t *testing.T) {
+	t.Run("same repo", func(t *testing.T) {
+		svc := &fakeService{}
+		gh := &fakeGitHubPRClient{viewPRs: map[int]githubPR{
+			37: {Number: 37, Title: "Fix shell init", HeadRefName: "feature/shell-init", Author: githubPRAuthor{Login: "scott"}},
+		}}
+		cmd := newRootCmd(svc, Streams{In: strings.NewReader(""), Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}}, noopUpdater{}, gh, func(context.Context) (string, error) {
+			return "/tmp/repo", nil
+		})
+		cmd.SetArgs([]string{"pr", "37", "--no-setup", "--rollback-on-setup-failure"})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("execute failed: %v", err)
+		}
+		if !svc.lastMake.NoSetup || !svc.lastMake.RollbackOnSetupFailure {
+			t.Fatalf("expected setup flags to reach same-repo Make, got %#v", svc.lastMake)
+		}
+		if svc.setupCalled {
+			t.Fatal("same-repo PR setup should be handled by Make")
+		}
+	})
+
+	t.Run("cross repo", func(t *testing.T) {
+		svc := &fakeService{}
+		gh := &fakeGitHubPRClient{viewPRs: map[int]githubPR{
+			37: {Number: 37, Title: "Forked fix", HeadRefName: "feature/forked-fix", IsCrossRepository: true, Author: githubPRAuthor{Login: "alex"}},
+		}}
+		cmd := newRootCmd(svc, Streams{In: strings.NewReader(""), Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}}, noopUpdater{}, gh, func(context.Context) (string, error) {
+			return "/tmp/repo", nil
+		})
+		cmd.SetArgs([]string{"pr", "37", "--no-setup", "--rollback-on-setup-failure"})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("execute failed: %v", err)
+		}
+		if !svc.lastMake.NoSetup {
+			t.Fatalf("expected cross-repo Make to defer setup, got %#v", svc.lastMake)
+		}
+		if svc.setupCalled {
+			t.Fatal("--no-setup should skip post-checkout setup")
+		}
+	})
 }
 
 func TestPRCommandBranchOverrideUsesRequestedLocalBranch(t *testing.T) {
@@ -176,6 +223,9 @@ func TestPRCommandBranchOverrideUsesRequestedLocalBranch(t *testing.T) {
 		}
 		if len(gh.checkoutCalls) != 1 || gh.checkoutCalls[0].branch != "review/pr-37" {
 			t.Fatalf("expected branch override to reach gh checkout, got %#v", gh.checkoutCalls)
+		}
+		if svc.lastSetup.Branch != "review/pr-37" {
+			t.Fatalf("expected branch override to reach post-checkout setup, got %#v", svc.lastSetup)
 		}
 	})
 }
@@ -254,11 +304,17 @@ func TestPRCommandCrossRepoCheckoutFailureRollsBackWorkspace(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected checkout failure")
 	}
-	if !strings.Contains(err.Error(), "removed partial workspace") {
+	if !strings.Contains(err.Error(), "removed partial workspace and metadata") {
 		t.Fatalf("expected rollback context in error, got %v", err)
+	}
+	if !svc.rollbackCalled || svc.lastRollback != "forked-fix" {
+		t.Fatalf("expected metadata-aware rollback for forked-fix, got called=%v workspace=%q", svc.rollbackCalled, svc.lastRollback)
 	}
 	if _, statErr := os.Stat(workspacePath); !os.IsNotExist(statErr) {
 		t.Fatalf("expected workspace rollback to remove %q, got err=%v", workspacePath, statErr)
+	}
+	if svc.setupCalled {
+		t.Fatal("setup should not run when gh checkout fails")
 	}
 	if strings.Contains(out.String(), "checked out:") {
 		t.Fatalf("did not expect success output after checkout failure, got %q", out.String())

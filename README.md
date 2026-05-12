@@ -105,9 +105,9 @@ stooges add auto-cd -b
 # keep workspaces up to date with your base branch
 stooges rebase
 
-# done? push your branch and delete the workspace
+# done? push your branch and trash the workspace
 cd ..
-trash auto-cd
+stooges trash auto-cd
 ```
 
 You can add a new workspace at any time with `stooges add`. The `-b` flag creates a branch named after the workspace, or use `--branch name` for a specific branch name.
@@ -115,8 +115,21 @@ When plain `add` or `branch` clones from base, Stooges syncs the base repo first
 Use `stooges branch <branch>` to derive the workspace name from the branch suffix and create/switch that local branch automatically.
 Use `stooges fork <branch>` from inside a managed workspace to copy that workspace, keep its current changes, and then create the requested local branch in the new copy; it fails if that local branch already exists in the copied workspace.
 Use `--track <branch>` to track `origin/<branch>` in a newly created workspace (optionally with `--branch <local-name>`); it fails if `origin/<branch>` is missing or if the destination local branch already exists. Or use `stooges track <branch>` to derive the workspace name automatically.
-Use `stooges pr <number>` to create a workspace for a GitHub pull request in the current repository. With no number, Stooges uses the GitHub CLI (`gh`) to list open PRs in the current repository, lets you pick one interactively, then creates the workspace and checks out that PR. Stooges checks `gh auth status` first and asks you to authenticate if needed. Same-repo PRs use tracked-branch setup; cross-repo PRs fall back to `gh pr checkout` in the new workspace.
+Use `stooges pr <number>` to create a workspace for a GitHub pull request in the current repository. With no number, Stooges uses the GitHub CLI (`gh`) to list open PRs in the current repository, lets you pick one interactively, then creates the workspace and checks out that PR. Stooges checks `gh auth status` first and asks you to authenticate if needed. Same-repo PRs use tracked-branch setup; cross-repo PRs fall back to `gh pr checkout` in the new workspace, then run setup only after checkout succeeds.
 If you optionally enable `eval "$(stooges shell-init zsh)"` (or `bash`), `stooges add`, `stooges branch`, `stooges fork`, `stooges track`, and `stooges pr` will automatically `cd` into the new workspace; pass `--no-cd` to stay where you are.
+
+Optional workspace hooks can be configured by adding `setupScript` and/or `teardownScript` to the existing `.stooges-metadata.json`. Keep the required metadata fields that `stooges init` created:
+
+```json
+{
+  "mainBranch": "main",
+  "managedWorkspaces": ["larry", "curly", "moe"],
+  "setupScript": "scripts/stooges-setup.sh",
+  "teardownScript": "scripts/stooges-teardown.sh"
+}
+```
+
+Relative hook paths resolve from the workspace root (the directory containing `.stooges`). Setup runs after clone/branch checkout for new workspaces, and after successful `gh pr checkout` for cross-repo PRs, not during the initial `stooges init`. Teardown runs before `stooges trash <workspace>`. Hooks run from the workspace directory with `STOOGES_CWD`, `STOOGES_MAIN`, `STOOGES_SOURCE`, `STOOGES_BRANCH`, `STOOGES_FOLDER`, and `STOOGES_FOLDER_PATH` set. Setup failures leave the workspace in place and managed by default; pass `--rollback-on-setup-failure` to `add`, `branch`, `fork`, `track`, or `pr` to remove created workspace(s), or `--no-setup` to skip the hook.
 
 ## Keeping in sync
 
@@ -159,6 +172,7 @@ stooges sync               # sync base repo from remote
 stooges clean              # sync + prune stale refs
 stooges rebase --prune     # sync + rebase workspaces onto base
 stooges list               # list base + workspaces with branch and latest commit
+stooges trash auto-cd      # run teardown hook, then move workspace to Trash
 
 stooges undo --yes         # tear down workspace layout (destructive)
 ```
@@ -175,6 +189,7 @@ stooges undo --yes         # tear down workspace layout (destructive)
 - `clean` — sync + prune stale remote-tracking refs
 - `rebase` — sync base + rebase workspace branches
 - `list` (`ls`) — show base + managed workspaces with git head info
+- `trash` — run teardown hook and move a managed workspace to Trash
 - `unlock` / `lock` — toggle read-only protection on the base
 - `undo` (alias: `remove`) — tear down and restore original layout
 - `doctor` — check platform support and workspace health

@@ -231,6 +231,8 @@ func isNotGitRepoError(err error) bool {
 func newPRCmd(svc engine.WorkspaceService, streams Streams, gh githubPRClient, repoResolver githubRepoResolver) *cobra.Command {
 	var branch string
 	var noCD bool
+	var noSetup bool
+	var rollbackOnSetupFailure bool
 
 	cmd := &cobra.Command{
 		Use:   "pr [number]",
@@ -248,16 +250,18 @@ func newPRCmd(svc engine.WorkspaceService, streams Streams, gh githubPRClient, r
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runPRAction(cmd.Context(), svc, streams, gh, repoResolver, args, strings.TrimSpace(branch), noCD)
+			return runPRAction(cmd.Context(), svc, streams, gh, repoResolver, args, strings.TrimSpace(branch), noCD, noSetup, rollbackOnSetupFailure)
 		},
 	}
 
 	cmd.Flags().StringVarP(&branch, "branch", "b", "", "Optional local branch name to use for the PR checkout")
 	cmd.Flags().BoolVar(&noCD, "no-cd", false, "Stay in the current directory even when shell integration is enabled")
+	cmd.Flags().BoolVar(&noSetup, "no-setup", false, "Skip the configured setup script for this PR workspace")
+	cmd.Flags().BoolVar(&rollbackOnSetupFailure, "rollback-on-setup-failure", false, "Remove the created PR workspace if the setup script fails")
 	return cmd
 }
 
-func runPRAction(ctx context.Context, svc engine.WorkspaceService, streams Streams, gh githubPRClient, repoResolver githubRepoResolver, args []string, branch string, noCD bool) error {
+func runPRAction(ctx context.Context, svc engine.WorkspaceService, streams Streams, gh githubPRClient, repoResolver githubRepoResolver, args []string, branch string, noCD, noSetup, rollbackOnSetupFailure bool) error {
 	repoPath, err := repoResolver(ctx)
 	if err != nil {
 		return err
@@ -273,7 +277,7 @@ func runPRAction(ctx context.Context, svc engine.WorkspaceService, streams Strea
 
 	workspace := derivePRWorkspaceName(pr)
 	stop := startSpinner(streams.ErrOut, fmt.Sprintf("Creating workspace for PR #%d", pr.Number))
-	result, err := checkoutPullRequestWorkspace(ctx, svc, gh, pr, workspace, strings.TrimSpace(branch))
+	result, err := checkoutPullRequestWorkspace(ctx, svc, gh, pr, workspace, strings.TrimSpace(branch), noSetup, rollbackOnSetupFailure)
 	stop(err)
 	if err != nil {
 		return err
@@ -334,12 +338,12 @@ func derivePRWorkspaceName(pr githubPR) string {
 	return derived
 }
 
-func checkoutPullRequestWorkspace(ctx context.Context, svc engine.WorkspaceService, gh githubPRClient, pr githubPR, workspace, branch string) (model.MakeResult, error) {
+func checkoutPullRequestWorkspace(ctx context.Context, svc engine.WorkspaceService, gh githubPRClient, pr githubPR, workspace, branch string, noSetup, rollbackOnSetupFailure bool) (model.MakeResult, error) {
 	if !pr.IsCrossRepository && strings.TrimSpace(pr.HeadRefName) != "" {
-		return svc.Make(ctx, model.MakeOptions{Agent: workspace, Source: "base", Track: strings.TrimSpace(pr.HeadRefName), Branch: branch})
+		return svc.Make(ctx, model.MakeOptions{Agent: workspace, Source: "base", Track: strings.TrimSpace(pr.HeadRefName), Branch: branch, NoSetup: noSetup, RollbackOnSetupFailure: rollbackOnSetupFailure})
 	}
 
-	result, err := svc.Make(ctx, model.MakeOptions{Agent: workspace, Source: "base"})
+	result, err := svc.Make(ctx, model.MakeOptions{Agent: workspace, Source: "base", NoSetup: true})
 	if err != nil {
 		return model.MakeResult{}, err
 	}
@@ -348,16 +352,28 @@ func checkoutPullRequestWorkspace(ctx context.Context, svc engine.WorkspaceServi
 	}
 	workspacePath := filepath.Join(result.WorkspaceRoot, result.Created[0])
 	if err := gh.Checkout(ctx, workspacePath, pr.Number, branch); err != nil {
-		rollbackErr := rollbackPartialPRWorkspace(workspacePath)
+		rollbackErr := rollbackPartialPRWorkspace(ctx, svc, result.Created[0], workspacePath)
 		if rollbackErr != nil {
 			return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, fmt.Sprintf("gh pr checkout failed in %s and rollback failed", workspacePath), errors.Join(err, rollbackErr))
 		}
 		return model.MakeResult{}, wrapPRCheckoutFailure(workspacePath, err)
 	}
+	if !noSetup {
+		if _, err := svc.Setup(ctx, model.SetupOptions{Workspace: result.Created[0], Source: "base", Branch: branch, RollbackOnSetupFailure: rollbackOnSetupFailure}); err != nil {
+			return model.MakeResult{}, err
+		}
+	}
 	return result, nil
 }
 
-func rollbackPartialPRWorkspace(workspacePath string) error {
+type workspaceCreationRollbacker interface {
+	RollbackWorkspaceCreation(context.Context, string) error
+}
+
+func rollbackPartialPRWorkspace(ctx context.Context, svc engine.WorkspaceService, workspace, workspacePath string) error {
+	if rollbacker, ok := svc.(workspaceCreationRollbacker); ok {
+		return rollbacker.RollbackWorkspaceCreation(ctx, workspace)
+	}
 	if err := os.RemoveAll(workspacePath); err != nil {
 		return apperrors.Wrap(apperrors.KindFilesystemFailure, fmt.Sprintf("remove partial workspace %s", workspacePath), err)
 	}
@@ -365,7 +381,7 @@ func rollbackPartialPRWorkspace(workspacePath string) error {
 }
 
 func wrapPRCheckoutFailure(workspacePath string, err error) error {
-	message := fmt.Sprintf("gh pr checkout failed in %s; removed partial workspace", workspacePath)
+	message := fmt.Sprintf("gh pr checkout failed in %s; removed partial workspace and metadata", workspacePath)
 	var appErr *apperrors.Error
 	if errors.As(err, &appErr) {
 		return apperrors.Wrap(appErr.Kind, message, err)

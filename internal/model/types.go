@@ -42,13 +42,22 @@ type InitOptions struct {
 }
 
 type MakeOptions struct {
-	Agent            string
-	Source           string
-	Agents           []string
-	Track            string
-	Branch           string
-	BranchAuto       bool
-	RequireNewBranch bool
+	Agent                  string
+	Source                 string
+	Agents                 []string
+	Track                  string
+	Branch                 string
+	BranchAuto             bool
+	RequireNewBranch       bool
+	NoSetup                bool
+	RollbackOnSetupFailure bool
+}
+
+type SetupOptions struct {
+	Workspace              string
+	Source                 string
+	Branch                 string
+	RollbackOnSetupFailure bool
 }
 
 type SyncOptions struct {
@@ -82,6 +91,11 @@ type UndoOptions struct {
 	Base string
 }
 
+type TrashOptions struct {
+	Workspace string
+	Force     bool
+}
+
 type InitResult struct {
 	BaseDir string
 	Agents  []string
@@ -91,6 +105,12 @@ type MakeResult struct {
 	Created       []string
 	Guidance      string
 	WorkspaceRoot string
+}
+
+type SetupResult struct {
+	WorkspaceRoot string
+	Workspace     string
+	WorkspacePath string
 }
 
 type SyncResult struct {
@@ -138,6 +158,15 @@ type UndoResult struct {
 	BaseRepoPath  string
 	BackupPath    string
 	Steps         []string
+}
+
+type TrashResult struct {
+	WorkspaceRoot string
+	Workspace     string
+	WorkspacePath string
+	Removal       string
+	Teardown      string
+	TeardownError string
 }
 
 func (r DoctorReport) HasCriticalPreflightFailure() bool {

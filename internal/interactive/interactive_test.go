@@ -33,6 +33,9 @@ func (f *fakeService) Make(context.Context, model.MakeOptions) (model.MakeResult
 	f.makeCalls++
 	return model.MakeResult{Created: []string{"moe"}}, nil
 }
+func (f *fakeService) Setup(context.Context, model.SetupOptions) (model.SetupResult, error) {
+	return model.SetupResult{}, nil
+}
 func (f *fakeService) Sync(context.Context, model.SyncOptions) (model.SyncResult, error) {
 	return model.SyncResult{}, nil
 }
@@ -60,6 +63,9 @@ func (f *fakeService) Doctor(context.Context, model.DoctorOptions) (model.Doctor
 }
 func (f *fakeService) Undo(context.Context, model.UndoOptions) (model.UndoResult, error) {
 	return model.UndoResult{}, nil
+}
+func (f *fakeService) Trash(context.Context, model.TrashOptions) (model.TrashResult, error) {
+	return model.TrashResult{}, nil
 }
 
 func (f *fakeService) PreviewInitBranch(context.Context) (string, error) {

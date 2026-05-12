@@ -17,17 +17,25 @@ import (
 type fakeService struct {
 	initCalled                 bool
 	makeCalled                 bool
+	setupCalled                bool
 	syncCalled                 int
 	doctorCalled               bool
 	lockCalled                 bool
 	listCalled                 bool
 	rebaseCalled               bool
 	undoCalled                 bool
+	trashCalled                bool
+	rollbackCalled             bool
 	lastCtx                    context.Context
 	lastInit                   model.InitOptions
 	lastMake                   model.MakeOptions
+	lastSetup                  model.SetupOptions
 	lastSync                   model.SyncOptions
+	lastTrash                  model.TrashOptions
+	lastRollback               string
 	makeFn                     func(context.Context, model.MakeOptions) (model.MakeResult, error)
+	setupErr                   error
+	rollbackErr                error
 	makeResult                 model.MakeResult
 	makeErr                    error
 	syncErr                    error
@@ -48,7 +56,11 @@ func (f *fakeService) Make(ctx context.Context, opts model.MakeOptions) (model.M
 	f.lastCtx = ctx
 	f.lastMake = opts
 	if f.makeFn != nil {
-		return f.makeFn(ctx, opts)
+		res, err := f.makeFn(ctx, opts)
+		if err == nil {
+			f.makeResult = res
+		}
+		return res, err
 	}
 	if f.makeErr != nil {
 		return model.MakeResult{}, f.makeErr
@@ -61,6 +73,28 @@ func (f *fakeService) Make(ctx context.Context, opts model.MakeOptions) (model.M
 		created = strings.TrimSpace(opts.Agent)
 	}
 	return model.MakeResult{Created: []string{created}, WorkspaceRoot: "/tmp/workspace"}, nil
+}
+func (f *fakeService) RollbackWorkspaceCreation(ctx context.Context, workspace string) error {
+	f.rollbackCalled = true
+	f.lastCtx = ctx
+	f.lastRollback = workspace
+	if f.rollbackErr != nil {
+		return f.rollbackErr
+	}
+	root := f.makeResult.WorkspaceRoot
+	if strings.TrimSpace(root) == "" {
+		root = "/tmp/workspace"
+	}
+	return os.RemoveAll(root + "/" + workspace)
+}
+func (f *fakeService) Setup(ctx context.Context, opts model.SetupOptions) (model.SetupResult, error) {
+	f.setupCalled = true
+	f.lastCtx = ctx
+	f.lastSetup = opts
+	if f.setupErr != nil {
+		return model.SetupResult{}, f.setupErr
+	}
+	return model.SetupResult{WorkspaceRoot: "/tmp/workspace", Workspace: opts.Workspace, WorkspacePath: "/tmp/workspace/" + opts.Workspace}, nil
 }
 func (f *fakeService) Sync(ctx context.Context, opts model.SyncOptions) (model.SyncResult, error) {
 	f.syncCalled++
@@ -108,6 +142,12 @@ func (f *fakeService) Undo(ctx context.Context, _ model.UndoOptions) (model.Undo
 	f.lastCtx = ctx
 	f.undoCalled = true
 	return model.UndoResult{WorkspaceRoot: "/tmp/workspace"}, nil
+}
+func (f *fakeService) Trash(ctx context.Context, opts model.TrashOptions) (model.TrashResult, error) {
+	f.lastCtx = ctx
+	f.trashCalled = true
+	f.lastTrash = opts
+	return model.TrashResult{WorkspaceRoot: "/tmp/workspace", Workspace: opts.Workspace, WorkspacePath: "/tmp/workspace/" + opts.Workspace, Removal: "trash", Teardown: "skipped"}, nil
 }
 func (f *fakeService) PreviewInitBranch(context.Context) (string, error) {
 	if strings.TrimSpace(f.preview) == "" {
@@ -264,6 +304,19 @@ func TestAddTrackFlagWithBranchOverridePassesBoth(t *testing.T) {
 	}
 }
 
+func TestAddSetupFlagsPassThrough(t *testing.T) {
+	svc := &fakeService{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}})
+	cmd.SetArgs([]string{"add", "bob", "--no-setup", "--rollback-on-setup-failure"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if !svc.lastMake.NoSetup || !svc.lastMake.RollbackOnSetupFailure {
+		t.Fatalf("expected setup flags passthrough, got %#v", svc.lastMake)
+	}
+}
+
 func TestAddRejectsExtraPositionalWhenBranchFlagHasExplicitValue(t *testing.T) {
 	svc := &fakeService{}
 	out := &bytes.Buffer{}
@@ -383,6 +436,19 @@ func TestTrackAllowsExtraPositionalWhenBranchFlagUsesAutoMode(t *testing.T) {
 	}
 }
 
+func TestTrackSetupFlagsPassThrough(t *testing.T) {
+	svc := &fakeService{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}})
+	cmd.SetArgs([]string{"track", "feature/foo", "--no-setup", "--rollback-on-setup-failure"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if !svc.lastMake.NoSetup || !svc.lastMake.RollbackOnSetupFailure {
+		t.Fatalf("expected setup flags passthrough, got %#v", svc.lastMake)
+	}
+}
+
 func TestBranchCommandDerivesWorkspaceFromLastBranchSegment(t *testing.T) {
 	svc := &fakeService{}
 	out := &bytes.Buffer{}
@@ -431,6 +497,19 @@ func TestBranchNoSyncSkipsAutomaticBaseSync(t *testing.T) {
 	}
 	if svc.syncCalled != 0 {
 		t.Fatalf("expected branch --no-sync to skip auto-sync, got %d sync calls", svc.syncCalled)
+	}
+}
+
+func TestBranchSetupFlagsPassThrough(t *testing.T) {
+	svc := &fakeService{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}})
+	cmd.SetArgs([]string{"branch", "scott/aud-656", "--no-setup", "--rollback-on-setup-failure"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if !svc.lastMake.NoSetup || !svc.lastMake.RollbackOnSetupFailure {
+		t.Fatalf("expected setup flags passthrough, got %#v", svc.lastMake)
 	}
 }
 
@@ -491,6 +570,21 @@ func TestForkCommandUsesCurrentWorkspaceAsSource(t *testing.T) {
 	}
 	if svc.lastMake.Agent != "aud-656" || svc.lastMake.Source != "larry" || svc.lastMake.Branch != "scott/aud-656" || svc.lastMake.Track != "" || svc.lastMake.BranchAuto || !svc.lastMake.RequireNewBranch {
 		t.Fatalf("expected derived workspace aud-656 from current workspace source, got %#v", svc.lastMake)
+	}
+}
+
+func TestForkSetupFlagsPassThrough(t *testing.T) {
+	svc := &fakeService{currentWorkspace: engine.CurrentWorkspace{Name: "larry", Path: t.TempDir(), WorkspaceRoot: "/tmp/workspace"}}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"fork", "scott/aud-656", "--no-setup", "--rollback-on-setup-failure"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if !svc.lastMake.NoSetup || !svc.lastMake.RollbackOnSetupFailure {
+		t.Fatalf("expected setup flags passthrough, got %#v", svc.lastMake)
 	}
 }
 
@@ -700,6 +794,39 @@ func TestUndoCommandDispatches(t *testing.T) {
 	}
 	if !svc.undoCalled {
 		t.Fatal("expected undo command to call workspace undo operation")
+	}
+}
+
+func TestTrashCommandDispatches(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: &bytes.Buffer{}})
+	cmd.SetArgs([]string{"trash", "moe"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if !svc.trashCalled {
+		t.Fatal("expected trash command to call workspace trash operation")
+	}
+	if svc.lastTrash.Workspace != "moe" || svc.lastTrash.Force {
+		t.Fatalf("expected trash workspace moe without force, got %#v", svc.lastTrash)
+	}
+	if !strings.Contains(out.String(), "workspace=moe") || !strings.Contains(out.String(), "removal=trash") {
+		t.Fatalf("expected trash output, got %q", out.String())
+	}
+}
+
+func TestTrashForceFlagPassesThrough(t *testing.T) {
+	svc := &fakeService{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}})
+	cmd.SetArgs([]string{"trash", "moe", "--force"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if !svc.lastTrash.Force {
+		t.Fatalf("expected force flag passthrough, got %#v", svc.lastTrash)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	apperrors "github.com/scottwater/stooges/internal/errors"
@@ -17,6 +18,7 @@ import (
 type WorkspaceService interface {
 	Init(context.Context, model.InitOptions) (model.InitResult, error)
 	Make(context.Context, model.MakeOptions) (model.MakeResult, error)
+	Setup(context.Context, model.SetupOptions) (model.SetupResult, error)
 	Sync(context.Context, model.SyncOptions) (model.SyncResult, error)
 	Clean(context.Context, model.CleanOptions) (model.CleanResult, error)
 	List(context.Context, model.ListOptions) (model.ListResult, error)
@@ -25,6 +27,7 @@ type WorkspaceService interface {
 	Rebase(context.Context, model.RebaseOptions) (model.RebaseResult, error)
 	Doctor(context.Context, model.DoctorOptions) (model.DoctorReport, error)
 	Undo(context.Context, model.UndoOptions) (model.UndoResult, error)
+	Trash(context.Context, model.TrashOptions) (model.TrashResult, error)
 }
 
 type PermissionOps interface {
@@ -370,6 +373,116 @@ func (s *Service) checkoutTrackingBranch(ctx context.Context, repo, remoteBranch
 	return s.git.SwitchTrack(ctx, repo, localBranch, remoteBranch)
 }
 
+func hookSourceName(source string) string {
+	trimmed := strings.TrimSpace(source)
+	if trimmed == "" {
+		return baseRepoAlias
+	}
+	return trimmed
+}
+
+func setupFailureResult(workspaceRoot string, created []string, setupErr error, rollback bool) (model.MakeResult, error) {
+	if rollback {
+		rollbackErr := rollbackCreatedWorkspaces(workspaceRoot, created)
+		if rollbackErr != nil {
+			return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "setup failed and rollback failed", errors.Join(setupErr, rollbackErr))
+		}
+		return model.MakeResult{}, apperrors.Wrap(apperrors.KindFilesystemFailure, "setup failed; rolled back created workspace", setupErr)
+	}
+	last := ""
+	if len(created) > 0 {
+		last = filepath.Join(workspaceRoot, created[len(created)-1])
+	}
+	message := "setup failed; workspace left in place for inspection/cleanup"
+	if last != "" {
+		message = fmt.Sprintf("setup failed; workspace left at %s for inspection/cleanup", last)
+	}
+	return model.MakeResult{Created: created, WorkspaceRoot: workspaceRoot}, apperrors.Wrap(apperrors.KindFilesystemFailure, message, setupErr)
+}
+
+func setupFailureError(workspaceRoot, workspace string, setupErr error, rollback bool) error {
+	_, err := setupFailureResult(workspaceRoot, []string{workspace}, setupErr, rollback)
+	return err
+}
+
+func (s *Service) runSetupForWorkspace(ctx context.Context, cwd string, layout WorkspaceLayout, source, workspace, branch string) error {
+	if strings.TrimSpace(layout.SetupScript) == "" {
+		return nil
+	}
+	workspacePath := filepath.Join(layout.WorkspaceRoot, workspace)
+	hookBranch := strings.TrimSpace(branch)
+	if hookBranch == "" {
+		detected, err := s.git.BranchName(ctx, workspacePath)
+		if err != nil {
+			return apperrors.Wrap(apperrors.KindGitFailure, fmt.Sprintf("detect branch for setup in %s", workspacePath), err)
+		}
+		hookBranch = strings.TrimSpace(detected)
+	}
+	return runWorkspaceScript(ctx, layout.SetupScript, setupHookEnv(cwd, layout.WorkspaceRoot, hookSourceName(source), workspace, hookBranch))
+}
+
+func (s *Service) RollbackWorkspaceCreation(_ context.Context, workspace string) error {
+	workspace = strings.TrimSpace(workspace)
+	if err := validateWorkspaceEntryName(workspace); err != nil {
+		return err
+	}
+	cwd, err := s.cwd()
+	if err != nil {
+		return apperrors.Wrap(apperrors.KindFilesystemFailure, "resolve current working directory", err)
+	}
+	workspaceRoot := workspaceRootFromCWD(cwd)
+	if strings.TrimSpace(workspaceRoot) == "" {
+		return apperrors.New(apperrors.KindInvalidInput, "workspace path is empty")
+	}
+	layout, err := loadWorkspaceLayout(workspaceRoot)
+	if err != nil {
+		return err
+	}
+	removeErr := rollbackCreatedWorkspaces(workspaceRoot, []string{workspace})
+	layout.ManagedWorkspaces = removeManagedWorkspace(layout.ManagedWorkspaces, workspace)
+	metadataErr := writeWorkspaceMetadata(layout)
+	if removeErr != nil || metadataErr != nil {
+		return apperrors.Wrap(apperrors.KindRollbackFailure, fmt.Sprintf("rollback workspace %s", workspace), errors.Join(removeErr, metadataErr))
+	}
+	return nil
+}
+
+func (s *Service) Setup(ctx context.Context, opts model.SetupOptions) (model.SetupResult, error) {
+	workspace := strings.TrimSpace(opts.Workspace)
+	if err := validateWorkspaceEntryName(workspace); err != nil {
+		return model.SetupResult{}, err
+	}
+	cwd, err := s.cwd()
+	if err != nil {
+		return model.SetupResult{}, apperrors.Wrap(apperrors.KindFilesystemFailure, "resolve current working directory", err)
+	}
+	workspaceRoot, layout, err := resolveWorkspaceAndLayout(cwd)
+	if err != nil {
+		return model.SetupResult{}, err
+	}
+	if !slices.Contains(layout.ManagedWorkspaces, workspace) {
+		return model.SetupResult{}, apperrors.New(apperrors.KindInvalidInput, fmt.Sprintf("workspace %q is not managed by stooges", workspace))
+	}
+	workspacePath := filepath.Join(workspaceRoot, workspace)
+	if !pathExists(workspacePath) {
+		return model.SetupResult{}, apperrors.New(apperrors.KindInvalidInput, fmt.Sprintf("workspace %q is missing", workspace))
+	}
+
+	result := model.SetupResult{WorkspaceRoot: workspaceRoot, Workspace: workspace, WorkspacePath: workspacePath}
+	if err := s.runSetupForWorkspace(ctx, cwd, layout, opts.Source, workspace, opts.Branch); err != nil {
+		if opts.RollbackOnSetupFailure {
+			rollbackErr := rollbackCreatedWorkspaces(workspaceRoot, []string{workspace})
+			layout.ManagedWorkspaces = removeManagedWorkspace(layout.ManagedWorkspaces, workspace)
+			metadataErr := writeWorkspaceMetadata(layout)
+			if rollbackErr != nil || metadataErr != nil {
+				return model.SetupResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "setup failed and rollback failed", errors.Join(err, rollbackErr, metadataErr))
+			}
+		}
+		return result, setupFailureError(workspaceRoot, workspace, err, opts.RollbackOnSetupFailure)
+	}
+	return result, nil
+}
+
 func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (model.MakeResult, error) {
 	cwd, err := s.cwd()
 	if err != nil {
@@ -441,6 +554,22 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (model.MakeR
 				return model.MakeResult{}, branchErr
 			}
 		}
+		hookBranch := targetBranch
+		if trackingEnabled {
+			hookBranch = trackLocal
+		}
+		if !opts.NoSetup {
+			if err := s.runSetupForWorkspace(ctx, cwd, layout, opts.Source, agent, hookBranch); err != nil {
+				created := []string{agent}
+				if !opts.RollbackOnSetupFailure {
+					layout.ManagedWorkspaces = appendManagedWorkspaces(layout.ManagedWorkspaces, created...)
+					if metadataErr := writeWorkspaceMetadata(layout); metadataErr != nil {
+						return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "setup failed and metadata update failed", errors.Join(err, metadataErr))
+					}
+				}
+				return setupFailureResult(workspaceRoot, created, err, opts.RollbackOnSetupFailure)
+			}
+		}
 		layout.ManagedWorkspaces = appendManagedWorkspaces(layout.ManagedWorkspaces, agent)
 		if err := writeWorkspaceMetadata(layout); err != nil {
 			rollbackErr := rollbackCreatedWorkspaces(workspaceRoot, []string{agent})
@@ -501,6 +630,21 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (model.MakeR
 			}
 		}
 		created = append(created, agent)
+		hookBranch := targetBranch
+		if opts.BranchAuto {
+			hookBranch = agent
+		}
+		if !opts.NoSetup {
+			if err := s.runSetupForWorkspace(ctx, cwd, layout, opts.Source, agent, hookBranch); err != nil {
+				if !opts.RollbackOnSetupFailure {
+					layout.ManagedWorkspaces = appendManagedWorkspaces(layout.ManagedWorkspaces, created...)
+					if metadataErr := writeWorkspaceMetadata(layout); metadataErr != nil {
+						return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "setup failed and metadata update failed", errors.Join(err, metadataErr))
+					}
+				}
+				return setupFailureResult(workspaceRoot, created, err, opts.RollbackOnSetupFailure)
+			}
+		}
 	}
 	layout.ManagedWorkspaces = appendManagedWorkspaces(layout.ManagedWorkspaces, created...)
 	if err := writeWorkspaceMetadata(layout); err != nil {

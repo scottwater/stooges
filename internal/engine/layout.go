@@ -26,11 +26,15 @@ type WorkspaceLayout struct {
 	MetadataPath      string
 	MainBranch        string
 	ManagedWorkspaces []string
+	SetupScript       string
+	TeardownScript    string
 }
 
 type workspaceMetadata struct {
 	MainBranch        string   `json:"mainBranch"`
 	ManagedWorkspaces []string `json:"managedWorkspaces"`
+	SetupScript       string   `json:"setupScript,omitempty"`
+	TeardownScript    string   `json:"teardownScript,omitempty"`
 }
 
 func workspaceRootFromCWD(cwd string) string {
@@ -98,6 +102,8 @@ func loadWorkspaceLayout(root string) (WorkspaceLayout, error) {
 	}
 	layout.MainBranch = strings.TrimSpace(meta.MainBranch)
 	layout.ManagedWorkspaces = normalizeManagedWorkspaces(meta.ManagedWorkspaces)
+	layout.SetupScript = strings.TrimSpace(meta.SetupScript)
+	layout.TeardownScript = strings.TrimSpace(meta.TeardownScript)
 	for _, workspace := range layout.ManagedWorkspaces {
 		if err := validateWorkspaceEntryName(workspace); err != nil {
 			return WorkspaceLayout{}, apperrors.New(apperrors.KindInvalidInput, fmt.Sprintf("invalid managed workspace entry %q in metadata", workspace))
@@ -110,6 +116,8 @@ func writeWorkspaceMetadata(layout WorkspaceLayout) error {
 	meta := workspaceMetadata{
 		MainBranch:        strings.TrimSpace(layout.MainBranch),
 		ManagedWorkspaces: normalizeManagedWorkspaces(layout.ManagedWorkspaces),
+		SetupScript:       strings.TrimSpace(layout.SetupScript),
+		TeardownScript:    strings.TrimSpace(layout.TeardownScript),
 	}
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {

@@ -16,6 +16,8 @@ func newTrackCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	var source string
 	var branch string
 	var noCD bool
+	var noSetup bool
+	var rollbackOnSetupFailure bool
 
 	cmd := &cobra.Command{
 		Use:   "track <branch>",
@@ -41,11 +43,13 @@ func newTrackCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 			}
 			branchName, branchAuto := resolveBranchSelection(cmd, args, branch)
 			result, err := svc.Make(cmd.Context(), model.MakeOptions{
-				Agent:      workspace,
-				Source:     source,
-				Track:      track,
-				Branch:     branchName,
-				BranchAuto: branchAuto,
+				Agent:                  workspace,
+				Source:                 source,
+				Track:                  track,
+				Branch:                 branchName,
+				BranchAuto:             branchAuto,
+				NoSetup:                noSetup,
+				RollbackOnSetupFailure: rollbackOnSetupFailure,
 			})
 			if err != nil {
 				return err
@@ -66,6 +70,8 @@ func newTrackCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	cmd.Flags().StringVar(&source, "source", "base", "Source workspace name (default: base/.stooges)")
 	cmd.Flags().StringVarP(&branch, "branch", "b", "", "Optional local branch name while tracking the remote branch")
 	cmd.Flags().BoolVar(&noCD, "no-cd", false, "Stay in the current directory even when shell integration is enabled")
+	cmd.Flags().BoolVar(&noSetup, "no-setup", false, "Skip the configured setup script for this run")
+	cmd.Flags().BoolVar(&rollbackOnSetupFailure, "rollback-on-setup-failure", false, "Remove created workspace if the setup script fails")
 	if branchFlag := cmd.Flags().Lookup("branch"); branchFlag != nil {
 		branchFlag.NoOptDefVal = autoBranchSentinel
 	}

@@ -111,7 +111,7 @@ func newRootCmd(svc engine.WorkspaceService, streams Streams, updaterClient Upda
 						In:     interactivePRInput{raw: streams.In, buffered: reader},
 						Out:    out,
 						ErrOut: errOut,
-					}, gh, repoResolver, nil, "", false)
+					}, gh, repoResolver, nil, "", false, false, false)
 				},
 			})
 		},
@@ -127,6 +127,7 @@ func newRootCmd(svc engine.WorkspaceService, streams Streams, updaterClient Upda
 	root.AddCommand(newSyncCmd(svc, streams))
 	root.AddCommand(newCleanCmd(svc, streams))
 	root.AddCommand(newListCmd(svc, streams))
+	root.AddCommand(newTrashCmd(svc, streams))
 	root.AddCommand(newRebaseCmd(svc, streams))
 	root.AddCommand(newUnlockCmd(svc, streams))
 	root.AddCommand(newLockCmd(svc, streams))

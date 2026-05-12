@@ -13,6 +13,8 @@ func newBranchCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	var source string
 	var noCD bool
 	var noSync bool
+	var noSetup bool
+	var rollbackOnSetupFailure bool
 
 	cmd := &cobra.Command{
 		Use:   "branch <branch>",
@@ -34,10 +36,12 @@ func newBranchCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 				return err
 			}
 			result, err := svc.Make(cmd.Context(), model.MakeOptions{
-				Agent:      workspace,
-				Source:     source,
-				Branch:     branch,
-				BranchAuto: false,
+				Agent:                  workspace,
+				Source:                 source,
+				Branch:                 branch,
+				BranchAuto:             false,
+				NoSetup:                noSetup,
+				RollbackOnSetupFailure: rollbackOnSetupFailure,
 			})
 			if err != nil {
 				return err
@@ -58,6 +62,8 @@ func newBranchCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	cmd.Flags().StringVar(&source, "source", "base", "Source workspace name (default: base/.stooges)")
 	cmd.Flags().BoolVar(&noCD, "no-cd", false, "Stay in the current directory even when shell integration is enabled")
 	cmd.Flags().BoolVar(&noSync, "no-sync", false, "Skip the automatic base sync before creating a workspace from base")
+	cmd.Flags().BoolVar(&noSetup, "no-setup", false, "Skip the configured setup script for this run")
+	cmd.Flags().BoolVar(&rollbackOnSetupFailure, "rollback-on-setup-failure", false, "Remove created workspace if the setup script fails")
 	return cmd
 }
 

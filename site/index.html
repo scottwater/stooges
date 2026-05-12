@@ -803,7 +803,7 @@
       <div class="scene" data-scene="FA.">
         <p class="scene-title">PR Example</p>
         <code><span style="color:var(--mid)">$</span> stooges pr 37</code>
-        <p>Looks up PR <code>#37</code> with the GitHub CLI, checks <code>gh auth status</code> first, derives a workspace name from the PR head branch, and checks out that PR in the new workspace. Run <code>stooges pr</code> with no number to choose from open PRs interactively.</p>
+        <p>Looks up PR <code>#37</code> with the GitHub CLI, checks <code>gh auth status</code> first, derives a workspace name from the PR head branch, and checks out that PR in the new workspace. Cross-repo setup runs only after checkout succeeds. Run <code>stooges pr</code> with no number to choose from open PRs interactively.</p>
       </div>
       <div class="command-card">
         <span class="cmd">stooges init</span>
@@ -819,7 +819,7 @@
       </div>
       <div class="command-card">
         <span class="cmd">stooges fork</span>
-        <span class="cmd-desc">Copy the current workspace into a new branched workspace</span>
+        <span class="cmd-desc">Copy the current workspace into a new branched workspace; supports setup controls</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges track</span>
@@ -827,7 +827,7 @@
       </div>
       <div class="command-card">
         <span class="cmd">stooges pr</span>
-        <span class="cmd-desc">Create a workspace from a GitHub pull request via gh</span>
+        <span class="cmd-desc">Create a workspace from a GitHub pull request via gh; setup runs after checkout</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges sync</span>
@@ -844,6 +844,10 @@
       <div class="command-card">
         <span class="cmd">stooges list</span>
         <span class="cmd-desc">Show all workspaces with branch &amp; status</span>
+      </div>
+      <div class="command-card">
+        <span class="cmd">stooges trash</span>
+        <span class="cmd-desc">Preflight removal, run teardown, then move a managed workspace to Trash</span>
       </div>
       <div class="command-card">
         <span class="cmd">stooges doctor</span>
