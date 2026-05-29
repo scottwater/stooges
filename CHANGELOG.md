@@ -2,6 +2,11 @@
 
 Newest entries are listed first.
 
+## 0.84 — 2026-05-29
+
+### Updated
+- `stooges pr` now hides draft pull requests from the interactive picker by default; pass `--draft` to include them.
+
 ## 0.82 — 2026-04-22
 
 ### Added
