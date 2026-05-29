@@ -35,6 +35,7 @@ type githubPR struct {
 	Title             string         `json:"title"`
 	HeadRefName       string         `json:"headRefName"`
 	IsCrossRepository bool           `json:"isCrossRepository"`
+	IsDraft           bool           `json:"isDraft"`
 	Author            githubPRAuthor `json:"author"`
 }
 
@@ -85,7 +86,7 @@ func (systemGitHubPRClient) EnsureAuth(ctx context.Context, repoPath string) err
 }
 
 func (systemGitHubPRClient) ListOpen(ctx context.Context, repoPath string) ([]githubPR, error) {
-	output, err := runGitHubCLI(ctx, repoPath, "pr", "list", "--state", "open", "--limit", "100", "--json", "number,title,author,headRefName")
+	output, err := runGitHubCLI(ctx, repoPath, "pr", "list", "--state", "open", "--limit", "100", "--json", "number,title,author,headRefName,isDraft")
 	if err != nil {
 		return nil, err
 	}
@@ -230,6 +231,7 @@ func isNotGitRepoError(err error) bool {
 
 func newPRCmd(svc engine.WorkspaceService, streams Streams, gh githubPRClient, repoResolver githubRepoResolver) *cobra.Command {
 	var branch string
+	var includeDrafts bool
 	var noCD bool
 	var noSetup bool
 	var rollbackOnSetupFailure bool
@@ -250,18 +252,19 @@ func newPRCmd(svc engine.WorkspaceService, streams Streams, gh githubPRClient, r
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runPRAction(cmd.Context(), svc, streams, gh, repoResolver, args, strings.TrimSpace(branch), noCD, noSetup, rollbackOnSetupFailure)
+			return runPRAction(cmd.Context(), svc, streams, gh, repoResolver, args, strings.TrimSpace(branch), includeDrafts, noCD, noSetup, rollbackOnSetupFailure)
 		},
 	}
 
 	cmd.Flags().StringVarP(&branch, "branch", "b", "", "Optional local branch name to use for the PR checkout")
+	cmd.Flags().BoolVar(&includeDrafts, "draft", false, "Include draft pull requests in interactive selection")
 	cmd.Flags().BoolVar(&noCD, "no-cd", false, "Stay in the current directory even when shell integration is enabled")
 	cmd.Flags().BoolVar(&noSetup, "no-setup", false, "Skip the configured setup script for this PR workspace")
 	cmd.Flags().BoolVar(&rollbackOnSetupFailure, "rollback-on-setup-failure", false, "Remove the created PR workspace if the setup script fails")
 	return cmd
 }
 
-func runPRAction(ctx context.Context, svc engine.WorkspaceService, streams Streams, gh githubPRClient, repoResolver githubRepoResolver, args []string, branch string, noCD, noSetup, rollbackOnSetupFailure bool) error {
+func runPRAction(ctx context.Context, svc engine.WorkspaceService, streams Streams, gh githubPRClient, repoResolver githubRepoResolver, args []string, branch string, includeDrafts, noCD, noSetup, rollbackOnSetupFailure bool) error {
 	repoPath, err := repoResolver(ctx)
 	if err != nil {
 		return err
@@ -270,7 +273,7 @@ func runPRAction(ctx context.Context, svc engine.WorkspaceService, streams Strea
 		return err
 	}
 
-	pr, err := resolvePullRequestSelection(ctx, streams, gh, repoPath, args)
+	pr, err := resolvePullRequestSelection(ctx, streams, gh, repoPath, args, includeDrafts)
 	if err != nil {
 		return err
 	}
@@ -307,7 +310,7 @@ func parsePRNumber(input string) (int, error) {
 	return number, nil
 }
 
-func resolvePullRequestSelection(ctx context.Context, streams Streams, gh githubPRClient, repoPath string, args []string) (githubPR, error) {
+func resolvePullRequestSelection(ctx context.Context, streams Streams, gh githubPRClient, repoPath string, args []string, includeDrafts bool) (githubPR, error) {
 	if len(args) == 1 {
 		number, err := parsePRNumber(args[0])
 		if err != nil {
@@ -320,6 +323,9 @@ func resolvePullRequestSelection(ctx context.Context, streams Streams, gh github
 	if err != nil {
 		return githubPR{}, err
 	}
+	if !includeDrafts {
+		prs = filterDraftPullRequests(prs)
+	}
 	if len(prs) == 0 {
 		return githubPR{}, apperrors.New(apperrors.KindInvalidInput, "no open pull requests found for this repository")
 	}
@@ -328,6 +334,16 @@ func resolvePullRequestSelection(ctx context.Context, streams Streams, gh github
 		return githubPR{}, err
 	}
 	return gh.View(ctx, repoPath, selection.Number)
+}
+
+func filterDraftPullRequests(prs []githubPR) []githubPR {
+	filtered := prs[:0]
+	for _, pr := range prs {
+		if !pr.IsDraft {
+			filtered = append(filtered, pr)
+		}
+	}
+	return filtered
 }
 
 func derivePRWorkspaceName(pr githubPR) string {

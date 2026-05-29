@@ -354,6 +354,64 @@ func TestPRCommandInteractiveSelectionUsesChosenPullRequest(t *testing.T) {
 	}
 }
 
+func TestPRCommandInteractiveSelectionSkipsDraftPullRequestsByDefault(t *testing.T) {
+	svc := &fakeService{}
+	gh := &fakeGitHubPRClient{
+		listPRs: []githubPR{
+			{Number: 11, Title: "Draft PR", HeadRefName: "feature/draft", IsDraft: true, Author: githubPRAuthor{Login: "moe"}},
+			{Number: 12, Title: "Ready PR", HeadRefName: "feature/ready", Author: githubPRAuthor{Login: "larry"}},
+		},
+		viewPRs: map[int]githubPR{
+			12: {Number: 12, Title: "Ready PR", HeadRefName: "feature/ready", Author: githubPRAuthor{Login: "larry"}},
+		},
+	}
+	out := &bytes.Buffer{}
+	cmd := newRootCmd(svc, Streams{In: strings.NewReader("1\n"), Out: out, ErrOut: &bytes.Buffer{}}, noopUpdater{}, gh, func(context.Context) (string, error) {
+		return "/tmp/repo", nil
+	})
+	cmd.SetArgs([]string{"pr"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if len(gh.viewCalls) != 1 || gh.viewCalls[0] != 12 {
+		t.Fatalf("expected non-draft PR #12 to be viewed, got %#v", gh.viewCalls)
+	}
+	printed := out.String()
+	if strings.Contains(printed, "#11") || strings.Contains(printed, "Draft PR") {
+		t.Fatalf("expected draft PR to be omitted from picker, got %q", printed)
+	}
+}
+
+func TestPRCommandInteractiveSelectionIncludesDraftPullRequestsWithDraftFlag(t *testing.T) {
+	svc := &fakeService{}
+	gh := &fakeGitHubPRClient{
+		listPRs: []githubPR{
+			{Number: 11, Title: "Draft PR", HeadRefName: "feature/draft", IsDraft: true, Author: githubPRAuthor{Login: "moe"}},
+			{Number: 12, Title: "Ready PR", HeadRefName: "feature/ready", Author: githubPRAuthor{Login: "larry"}},
+		},
+		viewPRs: map[int]githubPR{
+			11: {Number: 11, Title: "Draft PR", HeadRefName: "feature/draft", IsDraft: true, Author: githubPRAuthor{Login: "moe"}},
+		},
+	}
+	out := &bytes.Buffer{}
+	cmd := newRootCmd(svc, Streams{In: strings.NewReader("1\n"), Out: out, ErrOut: &bytes.Buffer{}}, noopUpdater{}, gh, func(context.Context) (string, error) {
+		return "/tmp/repo", nil
+	})
+	cmd.SetArgs([]string{"pr", "--draft"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if len(gh.viewCalls) != 1 || gh.viewCalls[0] != 11 {
+		t.Fatalf("expected draft PR #11 to be selectable, got %#v", gh.viewCalls)
+	}
+	printed := out.String()
+	if !strings.Contains(printed, "#11") || !strings.Contains(printed, "Draft PR") {
+		t.Fatalf("expected draft PR in picker output, got %q", printed)
+	}
+}
+
 func TestSelectPullRequestNumberedTruncatesLongTitles(t *testing.T) {
 	prs := []githubPR{{Number: 720, Title: strings.Repeat("A very long title ", 10), Author: githubPRAuthor{Login: "c-miles"}}}
 	out := &bytes.Buffer{}

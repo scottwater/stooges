@@ -803,7 +803,7 @@
       <div class="scene" data-scene="FA.">
         <p class="scene-title">PR Example</p>
         <code><span style="color:var(--mid)">$</span> stooges pr 37</code>
-        <p>Looks up PR <code>#37</code> with the GitHub CLI, checks <code>gh auth status</code> first, derives a workspace name from the PR head branch, and checks out that PR in the new workspace. Cross-repo setup runs only after checkout succeeds. Run <code>stooges pr</code> with no number to choose from open PRs interactively.</p>
+        <p>Looks up PR <code>#37</code> with the GitHub CLI, checks <code>gh auth status</code> first, derives a workspace name from the PR head branch, and checks out that PR in the new workspace. Cross-repo setup runs only after checkout succeeds. Run <code>stooges pr</code> with no number to choose from open non-draft PRs interactively, or add <code>--draft</code> to include drafts.</p>
       </div>
       <div class="scene" data-scene="FB.">
         <p class="scene-title">Hooks &amp; Cleanup</p>

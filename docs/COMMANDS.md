@@ -169,13 +169,14 @@ stooges track "feature/shell-init-polish"
 ## `pr`
 
 ```bash
-stooges pr [number] [--branch <name>] [--no-cd] [--no-setup] [--rollback-on-setup-failure]
+stooges pr [number] [--branch <name>] [--draft] [--no-cd] [--no-setup] [--rollback-on-setup-failure]
 ```
 
 Behavior:
 - Requires the GitHub CLI (`gh`) in PATH and an authenticated GitHub session.
 - With a numeric argument, looks up that PR in the current repository and creates a workspace for it.
-- With no argument, lists open PRs in the current repository and lets you choose one interactively (arrow-key picker on a TTY; numbered fallback otherwise).
+- With no argument, lists open non-draft PRs in the current repository and lets you choose one interactively (arrow-key picker on a TTY; numbered fallback otherwise).
+- `--draft` includes draft PRs in the interactive picker.
 - The PR list shows the PR number, author login, and title.
 - Same-repo PRs derive the workspace from the PR head branch and use tracked-branch setup, equivalent to `track` where possible.
 - Cross-repo PRs still derive the workspace from the PR head branch, but fall back to `gh pr checkout` inside the new workspace; setup runs only after that checkout succeeds.
@@ -190,6 +191,7 @@ Examples:
 stooges pr 37
 stooges pr 37 --branch review/pr-37
 stooges pr
+stooges pr --draft
 ```
 
 ## `sync`

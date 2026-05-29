@@ -115,7 +115,7 @@ When plain `add` or `branch` clones from base, Stooges syncs the base repo first
 Use `stooges branch <branch>` to derive the workspace name from the branch suffix and create/switch that local branch automatically.
 Use `stooges fork <branch>` from inside a managed workspace to copy that workspace, keep its current changes, and then create the requested local branch in the new copy; it fails if that local branch already exists in the copied workspace.
 Use `--track <branch>` to track `origin/<branch>` in a newly created workspace (optionally with `--branch <local-name>`); it fails if `origin/<branch>` is missing or if the destination local branch already exists. Or use `stooges track <branch>` to derive the workspace name automatically.
-Use `stooges pr <number>` to create a workspace for a GitHub pull request in the current repository. With no number, Stooges uses the GitHub CLI (`gh`) to list open PRs in the current repository, lets you pick one interactively, then creates the workspace and checks out that PR. Stooges checks `gh auth status` first and asks you to authenticate if needed. Same-repo PRs use tracked-branch setup; cross-repo PRs fall back to `gh pr checkout` in the new workspace, then run setup only after checkout succeeds.
+Use `stooges pr <number>` to create a workspace for a GitHub pull request in the current repository. With no number, Stooges uses the GitHub CLI (`gh`) to list open non-draft PRs in the current repository, lets you pick one interactively, then creates the workspace and checks out that PR; pass `--draft` to include draft PRs in that picker. Stooges checks `gh auth status` first and asks you to authenticate if needed. Same-repo PRs use tracked-branch setup; cross-repo PRs fall back to `gh pr checkout` in the new workspace, then run setup only after checkout succeeds.
 If you optionally enable `eval "$(stooges shell-init zsh)"` (or `bash`), `stooges add`, `stooges branch`, `stooges fork`, `stooges track`, and `stooges pr` will automatically `cd` into the new workspace; pass `--no-cd` to stay where you are.
 
 Optional workspace hooks can be configured by adding `setupScript` and/or `teardownScript` to the existing `.stooges-metadata.json`. Keep the required metadata fields that `stooges init` created:
@@ -166,7 +166,8 @@ stooges branch scott/auto-cd        # derive workspace "auto-cd" and create/swit
 stooges fork scott/auto-cd          # from inside a managed workspace, copy it and branch from that current state
 stooges track feature/shell-init    # derive workspace "shell-init" and track origin/feature/shell-init
 stooges pr 37                       # create a workspace for PR #37
-stooges pr                          # choose an open PR interactively with gh, then create a workspace for it
+stooges pr                          # choose an open non-draft PR interactively with gh, then create a workspace for it
+stooges pr --draft                  # include draft PRs in the interactive picker
 stooges pr 37 --no-setup            # skip configured setup hook for this PR workspace
 stooges branch scott/auto-cd --rollback-on-setup-failure # remove created workspace if setup fails
 

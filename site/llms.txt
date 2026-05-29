@@ -88,6 +88,7 @@ stooges fork scott/auto-cd
 stooges track feature/shell-init
 stooges pr 37
 stooges pr
+stooges pr --draft
 stooges pr 37 --no-setup
 stooges branch scott/auto-cd --rollback-on-setup-failure
 stooges add --source base
@@ -106,7 +107,7 @@ stooges trash auto-cd --force
 - `stooges track <branch>` is a convenience wrapper around `stooges add <derived-name> --track <branch>`.
 - `stooges pr <number>` uses the GitHub CLI (`gh`) to look up a PR in the current repository, create a new workspace, and check out that PR in the new workspace.
 - Stooges checks `gh auth status` before PR operations and fails with a clear auth message when GitHub CLI is not logged in.
-- `stooges pr` (with no args) lists open PRs in the current repository, shows PR number + author login + title, and lets the user choose interactively.
+- `stooges pr` (with no args) lists open non-draft PRs in the current repository, shows PR number + author login + title, and lets the user choose interactively. Pass `--draft` to include draft PRs in the picker.
 - Same-repo PRs use tracked-branch setup; cross-repo PRs fall back to `gh pr checkout` inside the new workspace and run setup only after checkout succeeds.
 - `branch`, `fork`, `track`, and `pr` derive the workspace from the branch suffix (last non-empty `/` segment), or from the first 50 sanitized characters when there is no `/`; `pr` falls back to `pr-<number>` when needed.
 - `fork` must run from inside a managed workspace and copies that workspace's current state, including ordinary dirty/untracked changes.

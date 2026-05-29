@@ -111,7 +111,7 @@ func newRootCmd(svc engine.WorkspaceService, streams Streams, updaterClient Upda
 						In:     interactivePRInput{raw: streams.In, buffered: reader},
 						Out:    out,
 						ErrOut: errOut,
-					}, gh, repoResolver, nil, "", false, false, false)
+					}, gh, repoResolver, nil, "", false, false, false, false)
 				},
 			})
 		},
