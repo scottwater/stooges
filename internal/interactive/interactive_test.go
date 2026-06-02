@@ -61,6 +61,9 @@ func (f *fakeService) Doctor(context.Context, model.DoctorOptions) (model.Doctor
 	}
 	return f.doctor, f.doctorErr
 }
+func (f *fakeService) Enabled(context.Context, model.EnabledOptions) (model.EnabledResult, error) {
+	return model.EnabledResult{Enabled: true}, nil
+}
 func (f *fakeService) Undo(context.Context, model.UndoOptions) (model.UndoResult, error) {
 	return model.UndoResult{}, nil
 }

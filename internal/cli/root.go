@@ -67,7 +67,7 @@ func (noopUpdater) Upgrade(context.Context, string) (update.UpgradeResult, error
 
 func skipsPassiveUpdateCheck(cmd *cobra.Command) bool {
 	switch cmd.Name() {
-	case "upgrade", "shell-init":
+	case "upgrade", "shell-init", "enabled":
 		return true
 	default:
 		return false
@@ -127,6 +127,7 @@ func newRootCmd(svc engine.WorkspaceService, streams Streams, updaterClient Upda
 	root.AddCommand(newSyncCmd(svc, streams))
 	root.AddCommand(newCleanCmd(svc, streams))
 	root.AddCommand(newListCmd(svc, streams))
+	root.AddCommand(newEnabledCmd(svc, streams))
 	root.AddCommand(newTrashCmd(svc, streams))
 	root.AddCommand(newRebaseCmd(svc, streams))
 	root.AddCommand(newUnlockCmd(svc, streams))

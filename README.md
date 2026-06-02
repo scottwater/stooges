@@ -150,6 +150,7 @@ If you need to manually edit the base repo (e.g., resolve something), use `stoog
 
 ```bash
 stooges doctor             # check platform support
+stooges enabled            # cheap probe: exit 0 when this directory supports Stooges
 stooges --version          # print installed version
 stooges upgrade            # replace current binary with latest release
 stooges shell-init zsh     # optional: print shell wrapper for auto-cd on add/branch/fork/track/pr
@@ -197,6 +198,7 @@ stooges undo --yes         # tear down workspace layout (destructive)
 - `unlock` / `lock` — toggle read-only protection on the base
 - `undo` (alias: `remove`) — tear down and restore original layout
 - `doctor` — check platform support and workspace health
+- `enabled` — check whether the current directory is inside a configured Stooges workspace
 - `shell-init` — print shell wrapper for auto-cd on `add`, `branch`, `fork`, `track`, and `pr`
 - `version` (or `--version`) — print installed version
 - `upgrade` — install the latest GitHub release over the current binary

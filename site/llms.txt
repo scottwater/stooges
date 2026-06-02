@@ -51,6 +51,15 @@ stooges doctor --json
 
 Checks: git availability, copy-on-write clone support, workspace validity. Use `--json` for machine-readable output.
 
+### Check Stooges Configuration
+
+```bash
+stooges enabled
+stooges enabled --json
+```
+
+Cheap agent probe. Exits `0` and prints `enabled` when the current directory is inside a configured Stooges workspace. Exits `1` and prints `not enabled` when not configured. JSON includes the workspace root, `.stooges` path, metadata path, and reason when available.
+
 ### Print Version
 
 ```bash

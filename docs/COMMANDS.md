@@ -332,6 +332,19 @@ Checks:
 - `.stooges` workspace layout / base repo resolution
 - active `.gitignore` patterns that currently match on-disk paths (warning-only)
 
+## `enabled`
+
+```bash
+stooges enabled [--json]
+```
+
+Behavior:
+- Checks only whether the current directory is inside a configured Stooges workspace.
+- Walks parent directories to find `.stooges`, then verifies `.stooges` is a git repo and `.stooges-metadata.json` is readable and valid.
+- Prints `enabled` and exits `0` when configured.
+- Prints `not enabled` and exits `1` when not configured.
+- `--json` prints `enabled`, `workspaceRoot`, `baseRepoPath`, `metadataPath`, and `reason` when available.
+
 ## `shell-init`
 
 ```bash

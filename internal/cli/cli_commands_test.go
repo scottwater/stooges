@@ -20,6 +20,7 @@ type fakeService struct {
 	setupCalled                bool
 	syncCalled                 int
 	doctorCalled               bool
+	enabledCalled              bool
 	lockCalled                 bool
 	listCalled                 bool
 	rebaseCalled               bool
@@ -42,6 +43,8 @@ type fakeService struct {
 	preview                    string
 	currentWorkspace           engine.CurrentWorkspace
 	resolveCurrentWorkspaceErr error
+	enabledResult              model.EnabledResult
+	enabledErr                 error
 }
 
 func (f *fakeService) Init(ctx context.Context, opts model.InitOptions) (model.InitResult, error) {
@@ -137,6 +140,22 @@ func (f *fakeService) Doctor(ctx context.Context, _ model.DoctorOptions) (model.
 	f.lastCtx = ctx
 	f.doctorCalled = true
 	return model.DoctorReport{Checks: []model.DoctorCheck{{Name: "git", OK: true, Message: "ok"}}}, nil
+}
+func (f *fakeService) Enabled(ctx context.Context, _ model.EnabledOptions) (model.EnabledResult, error) {
+	f.lastCtx = ctx
+	f.enabledCalled = true
+	if f.enabledErr != nil {
+		return model.EnabledResult{}, f.enabledErr
+	}
+	if f.enabledResult.WorkspaceRoot != "" || f.enabledResult.BaseRepoPath != "" || f.enabledResult.Reason != "" || f.enabledResult.Enabled {
+		return f.enabledResult, nil
+	}
+	return model.EnabledResult{
+		Enabled:       true,
+		WorkspaceRoot: "/tmp/workspace",
+		BaseRepoPath:  "/tmp/workspace/.stooges",
+		MetadataPath:  "/tmp/workspace/.stooges-metadata.json",
+	}, nil
 }
 func (f *fakeService) Undo(ctx context.Context, _ model.UndoOptions) (model.UndoResult, error) {
 	f.lastCtx = ctx
@@ -715,6 +734,61 @@ func TestDoctorJSON(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "\"checks\"") {
 		t.Fatalf("expected json output, got %s", out.String())
+	}
+}
+
+func TestEnabledCommandPrintsEnabled(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: &bytes.Buffer{}})
+	cmd.SetArgs([]string{"enabled"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if !svc.enabledCalled {
+		t.Fatal("expected enabled command to call workspace enabled operation")
+	}
+	if strings.TrimSpace(out.String()) != "enabled" {
+		t.Fatalf("expected enabled output, got %q", out.String())
+	}
+}
+
+func TestEnabledCommandReturnsErrorWhenDisabled(t *testing.T) {
+	svc := &fakeService{enabledResult: model.EnabledResult{Enabled: false, WorkspaceRoot: "/tmp/workspace", Reason: "workspace not configured (missing .stooges)"}}
+	out := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: &bytes.Buffer{}})
+	cmd.SetArgs([]string{"enabled"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected disabled workspace error")
+	}
+	if strings.TrimSpace(out.String()) != "not enabled" {
+		t.Fatalf("expected not enabled output, got %q", out.String())
+	}
+	if err.Error() != "not enabled" {
+		t.Fatalf("expected not enabled error, got %v", err)
+	}
+}
+
+func TestEnabledCommandJSON(t *testing.T) {
+	svc := &fakeService{enabledResult: model.EnabledResult{
+		Enabled:       true,
+		WorkspaceRoot: "/tmp/workspace",
+		BaseRepoPath:  "/tmp/workspace/.stooges",
+		MetadataPath:  "/tmp/workspace/.stooges-metadata.json",
+	}}
+	out := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: &bytes.Buffer{}})
+	cmd.SetArgs([]string{"enabled", "--json"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	body := out.String()
+	if !strings.Contains(body, `"enabled": true`) || !strings.Contains(body, `"workspaceRoot": "/tmp/workspace"`) {
+		t.Fatalf("expected enabled json output, got %s", body)
 	}
 }
 

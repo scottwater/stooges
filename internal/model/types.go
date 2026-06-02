@@ -80,6 +80,8 @@ type DoctorOptions struct {
 	Repo string
 }
 
+type EnabledOptions struct{}
+
 type RebaseOptions struct {
 	Repo  string
 	Prune bool
@@ -129,6 +131,14 @@ type UnlockResult struct {
 
 type LockResult struct {
 	RepoPath string
+}
+
+type EnabledResult struct {
+	Enabled       bool   `json:"enabled"`
+	WorkspaceRoot string `json:"workspaceRoot"`
+	BaseRepoPath  string `json:"baseRepoPath,omitempty"`
+	MetadataPath  string `json:"metadataPath,omitempty"`
+	Reason        string `json:"reason,omitempty"`
 }
 
 type RebaseResult struct {

@@ -1789,6 +1789,53 @@ func TestDoctorFromWorkspaceSubdirIsConfigured(t *testing.T) {
 	}
 }
 
+func TestEnabledFromWorkspaceSubdir(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main", "larry")
+	subdir := filepath.Join(workspace, "larry", "pkg", "api")
+	mustMkdirAll(t, subdir)
+	svc := newTestService(t, subdir, &fakeGit{})
+
+	res, err := svc.Enabled(context.Background(), model.EnabledOptions{})
+	if err != nil {
+		t.Fatalf("enabled failed: %v", err)
+	}
+	if !res.Enabled {
+		t.Fatalf("expected workspace enabled, got %#v", res)
+	}
+	if res.WorkspaceRoot != workspace {
+		t.Fatalf("expected workspace root %s, got %s", workspace, res.WorkspaceRoot)
+	}
+	if res.BaseRepoPath != layout.BaseRepoPath {
+		t.Fatalf("expected base repo %s, got %s", layout.BaseRepoPath, res.BaseRepoPath)
+	}
+	if res.MetadataPath != layout.MetadataPath {
+		t.Fatalf("expected metadata path %s, got %s", layout.MetadataPath, res.MetadataPath)
+	}
+	if res.Reason != "" {
+		t.Fatalf("expected empty reason when enabled, got %q", res.Reason)
+	}
+}
+
+func TestEnabledReturnsFalseWhenWorkspaceMissing(t *testing.T) {
+	workspace := t.TempDir()
+	svc := newTestService(t, workspace, &fakeGit{})
+
+	res, err := svc.Enabled(context.Background(), model.EnabledOptions{})
+	if err != nil {
+		t.Fatalf("enabled failed: %v", err)
+	}
+	if res.Enabled {
+		t.Fatalf("expected workspace disabled, got %#v", res)
+	}
+	if res.WorkspaceRoot != workspace {
+		t.Fatalf("expected workspace root %s, got %s", workspace, res.WorkspaceRoot)
+	}
+	if !strings.Contains(res.Reason, "missing .stooges") {
+		t.Fatalf("expected missing .stooges reason, got %q", res.Reason)
+	}
+}
+
 func TestListIncludesBaseAndManagedWorkspaces(t *testing.T) {
 	workspace := t.TempDir()
 	layout := mustSetupConfiguredWorkspace(t, workspace, "main", "larry", "moe")

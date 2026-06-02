@@ -26,6 +26,7 @@ type WorkspaceService interface {
 	Lock(context.Context, model.LockOptions) (model.LockResult, error)
 	Rebase(context.Context, model.RebaseOptions) (model.RebaseResult, error)
 	Doctor(context.Context, model.DoctorOptions) (model.DoctorReport, error)
+	Enabled(context.Context, model.EnabledOptions) (model.EnabledResult, error)
 	Undo(context.Context, model.UndoOptions) (model.UndoResult, error)
 	Trash(context.Context, model.TrashOptions) (model.TrashResult, error)
 }
@@ -286,6 +287,31 @@ func (s *Service) Doctor(ctx context.Context, opts model.DoctorOptions) (model.D
 		return report, apperrors.New(apperrors.KindPreflightFailure, "doctor found failing checks")
 	}
 	return report, nil
+}
+
+func (s *Service) Enabled(context.Context, model.EnabledOptions) (model.EnabledResult, error) {
+	cwd, err := s.cwd()
+	if err != nil {
+		return model.EnabledResult{}, apperrors.Wrap(apperrors.KindFilesystemFailure, "resolve current working directory", err)
+	}
+	workspaceRoot := workspaceRootFromCWD(cwd)
+	layoutCandidate := layoutFromRoot(workspaceRoot)
+	layout, err := loadWorkspaceLayout(workspaceRoot)
+	if err != nil {
+		return model.EnabledResult{
+			Enabled:       false,
+			WorkspaceRoot: workspaceRoot,
+			BaseRepoPath:  layoutCandidate.BaseRepoPath,
+			MetadataPath:  layoutCandidate.MetadataPath,
+			Reason:        err.Error(),
+		}, nil
+	}
+	return model.EnabledResult{
+		Enabled:       true,
+		WorkspaceRoot: workspaceRoot,
+		BaseRepoPath:  layout.BaseRepoPath,
+		MetadataPath:  layout.MetadataPath,
+	}, nil
 }
 
 func rollbackCreatedWorkspaces(workspaceRoot string, created []string) error {
