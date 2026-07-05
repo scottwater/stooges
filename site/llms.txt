@@ -56,9 +56,11 @@ Checks: git availability, copy-on-write clone support, workspace validity. Use `
 ```bash
 stooges enabled
 stooges enabled --json
+stooges stooged
 ```
 
 Cheap agent probe. Exits `0` and prints `enabled` when the current directory is inside a configured Stooges workspace. Exits `1` and prints `not enabled` when not configured. JSON includes the workspace root, `.stooges` path, metadata path, and reason when available.
+For the bare yes/no form, `stooges stooged` prints `yes` and exits `0` when configured, or prints `no` and exits `1` when not configured.
 
 ### Print Version
 

@@ -19,7 +19,9 @@ func main() {
 	svc := engine.NewService()
 	cmd := cli.NewRootCmdWithUpdater(svc, cli.Streams{}, update.NewManager())
 	if err := cmd.ExecuteContext(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		if !cli.IsQuietExit(err) {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		}
 		os.Exit(apperrors.ExitCode(err))
 	}
 }

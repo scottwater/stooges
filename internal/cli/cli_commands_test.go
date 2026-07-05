@@ -770,6 +770,9 @@ func TestEnabledCommandReturnsErrorWhenDisabled(t *testing.T) {
 	if err.Error() != "not enabled" {
 		t.Fatalf("expected not enabled error, got %v", err)
 	}
+	if !IsQuietExit(err) {
+		t.Fatalf("expected disabled enabled error to be quiet, got %T", err)
+	}
 }
 
 func TestEnabledCommandJSON(t *testing.T) {
@@ -789,6 +792,63 @@ func TestEnabledCommandJSON(t *testing.T) {
 	body := out.String()
 	if !strings.Contains(body, `"enabled": true`) || !strings.Contains(body, `"workspaceRoot": "/tmp/workspace"`) {
 		t.Fatalf("expected enabled json output, got %s", body)
+	}
+}
+
+func TestStoogedCommandPrintsYes(t *testing.T) {
+	svc := &fakeService{}
+	out := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: &bytes.Buffer{}})
+	cmd.SetArgs([]string{"stooged"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if !svc.enabledCalled {
+		t.Fatal("expected stooged command to call workspace enabled operation")
+	}
+	if strings.TrimSpace(out.String()) != "yes" {
+		t.Fatalf("expected yes output, got %q", out.String())
+	}
+}
+
+func TestStoogedCommandPrintsNoAndReturnsErrorWhenDisabled(t *testing.T) {
+	svc := &fakeService{enabledResult: model.EnabledResult{Enabled: false, WorkspaceRoot: "/tmp/workspace", Reason: "workspace not configured (missing .stooges)"}}
+	out := &bytes.Buffer{}
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: &bytes.Buffer{}})
+	cmd.SetArgs([]string{"stooged"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected disabled workspace error")
+	}
+	if strings.TrimSpace(out.String()) != "no" {
+		t.Fatalf("expected no output, got %q", out.String())
+	}
+	if err.Error() != "not enabled" {
+		t.Fatalf("expected not enabled error, got %v", err)
+	}
+	if !IsQuietExit(err) {
+		t.Fatalf("expected disabled stooged error to be quiet, got %T", err)
+	}
+}
+
+func TestStoogedCommandSkipsPassiveNotice(t *testing.T) {
+	svc := &fakeService{}
+	updater := &fakeUpdater{notifyText: "should not print\n"}
+	out := &bytes.Buffer{}
+	errOut := &bytes.Buffer{}
+	cmd := NewRootCmdWithUpdater(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut}, updater)
+	cmd.SetArgs([]string{"stooged"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if updater.maybeNotifyCalled != 0 {
+		t.Fatalf("expected stooged to skip passive notice, got %d calls", updater.maybeNotifyCalled)
+	}
+	if strings.Contains(errOut.String(), "should not print") {
+		t.Fatalf("did not expect stderr notice during stooged, got %q", errOut.String())
 	}
 }
 

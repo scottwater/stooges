@@ -55,6 +55,7 @@ No overwrite path exists in `add`; existing targets are not replaced.
 - `stooges lock` -> `Service.Lock`
 - `stooges undo` / `stooges remove` -> `Service.Undo`
 - `stooges doctor` -> `Service.Doctor`
+- `stooges enabled` / `stooges stooged` -> `Service.Enabled`
 - `stooges version` / `stooges --version` -> `internal/version.Value` (no engine call)
 - `stooges upgrade` -> GitHub release check + binary replacement (no engine call)
 - `stooges` (no args) -> interactive menu -> same service methods

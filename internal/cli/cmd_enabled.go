@@ -2,15 +2,12 @@ package cli
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/scottwater/stooges/internal/engine"
 	"github.com/scottwater/stooges/internal/model"
 	"github.com/spf13/cobra"
 )
-
-var errNotEnabled = errors.New("not enabled")
 
 func newEnabledCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 	var jsonOut bool
@@ -43,4 +40,23 @@ func newEnabledCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command 
 
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Output enabled status as JSON")
 	return cmd
+}
+
+func newStoogedCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
+	return &cobra.Command{
+		Use:   "stooged",
+		Short: "Print yes when the current directory is inside a configured Stooges workspace",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			result, err := svc.Enabled(cmd.Context(), model.EnabledOptions{})
+			if err != nil {
+				return err
+			}
+			if result.Enabled {
+				fmt.Fprintln(streams.Out, "yes")
+				return nil
+			}
+			fmt.Fprintln(streams.Out, "no")
+			return errNotEnabled
+		},
+	}
 }

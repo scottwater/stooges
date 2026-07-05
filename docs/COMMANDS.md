@@ -336,6 +336,7 @@ Checks:
 
 ```bash
 stooges enabled [--json]
+stooges stooged
 ```
 
 Behavior:
@@ -344,6 +345,7 @@ Behavior:
 - Prints `enabled` and exits `0` when configured.
 - Prints `not enabled` and exits `1` when not configured.
 - `--json` prints `enabled`, `workspaceRoot`, `baseRepoPath`, `metadataPath`, and `reason` when available.
+- `stooges stooged` uses the same check, prints `yes`/`no`, and exits `0`/`1`.
 
 ## `shell-init`
 
