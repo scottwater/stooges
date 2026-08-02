@@ -2,6 +2,17 @@
 
 Newest entries are listed first.
 
+## 0.85 — 2026-08-02
+
+### Added
+- `stooges enabled [--json]` for scripts and agents that need to detect whether the current directory belongs to a configured Stooges workspace.
+- `stooges stooged` as a compact `yes`/`no` workspace probe with script-friendly exit codes.
+- `STOOGES_NO_CD` support so project environments can disable shell-driven auto-`cd` without adding `--no-cd` to each command.
+
+### Updated
+- Disabled workspace probes exit quietly without an extra error message or passive update notice.
+- The website now includes favicons, touch icons, and a web app manifest.
+
 ## 0.84 — 2026-05-29
 
 ### Updated
