@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Stooges">
+  <style>
+    .field { fill: #1a1a1a }
+    .ink { fill: #f0ead6 }
+    .line { fill: none; stroke: #1a1a1a; stroke-linecap: round; stroke-width: 15 }
+    @media (prefers-color-scheme: dark) {
+      .field { fill: #f0ead6 }
+      .ink { fill: #1a1a1a }
+      .line { stroke: #f0ead6 }
+    }
+  </style>
+
+  <rect class="field" width="512" height="512" rx="72"/>
+
+  <!-- Larry: unruly curls -->
+  <path class="ink" d="M45 232c-24-18-18-50 8-55-20-27 1-59 32-50-4-34 33-52 55-29 16-29 60-21 65 13 33-10 57 24 39 51 28 10 31 51 5 65 10 46-24 89-70 89H99c-48 0-79-48-54-84Z"/>
+  <ellipse class="ink" cx="144" cy="235" rx="77" ry="91"/>
+  <path class="line" d="M108 232h22m28 0h22m-56 44c14 10 29 10 43 0"/>
+
+  <!-- Curly: bald dome -->
+  <path class="ink" d="M176 218c0-85 49-133 112-133s112 48 112 133v91c0 64-48 116-112 116s-112-52-112-116Z"/>
+  <path class="line" d="M239 250h24m50 0h24m-76 66c19 14 39 14 58 0"/>
+
+  <!-- Moe: blunt bowl cut -->
+  <path class="ink" d="M309 234c-11-76 27-137 100-137 71 0 103 57 93 137v93c0 57-42 99-96 99s-97-42-97-99Z"/>
+  <path class="field" d="M312 212c4-76 37-115 98-115 58 0 88 35 94 102-40-20-143-15-192 13Z"/>
+  <path class="line" d="M353 259h22m46 0h22m-67 64c17 11 35 11 52 0"/>
+
+  <!-- Film-frame corners -->
+  <path d="M32 104V32h72M408 32h72v72M480 408v72h-72M104 480H32v-72" fill="none" stroke="#777064" stroke-linecap="square" stroke-width="12"/>
+</svg>
