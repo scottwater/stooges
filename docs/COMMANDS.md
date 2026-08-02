@@ -357,7 +357,15 @@ Behavior:
 - Prints a shell wrapper function.
 - After `eval "$(stooges shell-init zsh)"`, successful single-workspace `stooges add`, `stooges branch`, `stooges fork`, `stooges track`, and `stooges pr` commands automatically `cd` into the created workspace.
 - Uses the resolved workspace root, so calling these commands from inside another managed workspace still lands in the new workspace root path.
-- `--no-cd` on `add`, `branch`, `fork`, `track`, or `pr` suppresses the redirect.
+- `--no-cd` on `add`, `branch`, `fork`, `track`, or `pr` suppresses the redirect for one command.
+- A truthy `STOOGES_NO_CD` environment value (`1`, `true`, `yes`, or `on`, case-insensitive) suppresses the redirect for every command in that environment.
+
+A Herdr project using mise can disable auto-cd only inside Herdr-managed panes:
+
+```toml
+[env]
+STOOGES_NO_CD = "{{ env.HERDR_ENV | default(value='0') }}"
+```
 
 ## `version`
 

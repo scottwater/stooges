@@ -629,6 +629,7 @@ func TestAddWritesCDTargetForShellIntegration(t *testing.T) {
 	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
 	cdFile := t.TempDir() + "/cd-target"
 	t.Setenv("STOOGES_CD_FILE", cdFile)
+	t.Setenv("STOOGES_NO_CD", "0")
 	cmd.SetArgs([]string{"add", "bob"})
 
 	if err := cmd.Execute(); err != nil {
@@ -660,6 +661,26 @@ func TestAddNoCDSkipsShellIntegrationTarget(t *testing.T) {
 	}
 }
 
+func TestAddSTOOGESNoCDSkipsShellIntegrationTarget(t *testing.T) {
+	for _, value := range []string{"1", "true", "TRUE", "yes", "on"} {
+		t.Run(value, func(t *testing.T) {
+			svc := &fakeService{}
+			cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}})
+			cdFile := t.TempDir() + "/cd-target"
+			t.Setenv("STOOGES_CD_FILE", cdFile)
+			t.Setenv("STOOGES_NO_CD", value)
+			cmd.SetArgs([]string{"add", "bob"})
+
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("execute failed: %v", err)
+			}
+			if _, err := os.Stat(cdFile); !os.IsNotExist(err) {
+				t.Fatalf("expected no cd target file for STOOGES_NO_CD=%q, got err=%v", value, err)
+			}
+		})
+	}
+}
+
 func TestAddWarnsWhenAutoCDTargetWriteFails(t *testing.T) {
 	svc := &fakeService{}
 	out := &bytes.Buffer{}
@@ -667,6 +688,7 @@ func TestAddWarnsWhenAutoCDTargetWriteFails(t *testing.T) {
 	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
 	cdFile := t.TempDir()
 	t.Setenv("STOOGES_CD_FILE", cdFile)
+	t.Setenv("STOOGES_NO_CD", "0")
 	cmd.SetArgs([]string{"add", "bob"})
 
 	if err := cmd.Execute(); err != nil {

@@ -132,6 +132,8 @@ stooges trash auto-cd --force
 - `add`, `branch`, `fork`, `track`, and `pr` accept `--no-setup` and `--rollback-on-setup-failure`.
 - Optional shell integration can auto-`cd` into the new workspace after successful single-workspace `stooges add`, `stooges branch`, `stooges fork`, `stooges track`, or `stooges pr` runs.
 - Shell integration example: `eval "$(stooges shell-init zsh)"` (or `bash`).
+- `--no-cd` disables auto-`cd` for one command. A truthy `STOOGES_NO_CD` value (`1`, `true`, `yes`, or `on`, case-insensitive) disables it for every command in that environment.
+- Herdr projects using mise can disable auto-`cd` only inside Herdr panes with `STOOGES_NO_CD = "{{ env.HERDR_ENV | default(value='0') }}"` under `[env]` in `mise.toml`.
 - This is optional; without it, users can just `cd <workspace>` manually.
 
 ### Sync Base Repo

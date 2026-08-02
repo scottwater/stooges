@@ -120,7 +120,7 @@ func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 }
 
 func writeAddCDTarget(result model.MakeResult, noCD bool) error {
-	if noCD || len(result.Created) != 1 || strings.TrimSpace(result.WorkspaceRoot) == "" {
+	if noCD || envDisablesAutoCD() || len(result.Created) != 1 || strings.TrimSpace(result.WorkspaceRoot) == "" {
 		return nil
 	}
 	targetFile := strings.TrimSpace(os.Getenv("STOOGES_CD_FILE"))
@@ -129,6 +129,15 @@ func writeAddCDTarget(result model.MakeResult, noCD bool) error {
 	}
 	targetDir := filepath.Join(result.WorkspaceRoot, result.Created[0])
 	return os.WriteFile(targetFile, []byte(targetDir), 0o600)
+}
+
+func envDisablesAutoCD() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("STOOGES_NO_CD"))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func warnAutoCDFailure(streams Streams, result model.MakeResult, err error) {

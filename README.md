@@ -63,7 +63,16 @@ eval "$(stooges shell-init zsh)"
 eval "$(stooges shell-init bash)"
 ```
 
-After that, successful single-workspace `stooges add`, `stooges branch`, `stooges fork`, `stooges track`, and `stooges pr` commands will automatically `cd` into the created workspace. Pass `--no-cd` any time you want to stay where you are.
+After that, successful single-workspace `stooges add`, `stooges branch`, `stooges fork`, `stooges track`, and `stooges pr` commands will automatically `cd` into the created workspace. Pass `--no-cd` for one command or set `STOOGES_NO_CD=1` in the environment to disable auto-cd for every command in that environment.
+
+For example, a project that uses [Herdr](https://herdr.dev/) can disable auto-cd only in Herdr-managed panes with this project-level `mise.toml` setting:
+
+```toml
+[env]
+STOOGES_NO_CD = "{{ env.HERDR_ENV | default(value='0') }}"
+```
+
+Herdr sets `HERDR_ENV=1` in managed panes. Outside Herdr, this mise setting resolves to `0` and keeps auto-cd enabled.
 
 ### What `init` does
 
@@ -116,7 +125,7 @@ Use `stooges branch <branch>` to derive the workspace name from the branch suffi
 Use `stooges fork <branch>` from inside a managed workspace to copy that workspace, keep its current changes, and then create the requested local branch in the new copy; it fails if that local branch already exists in the copied workspace.
 Use `--track <branch>` to track `origin/<branch>` in a newly created workspace (optionally with `--branch <local-name>`); it fails if `origin/<branch>` is missing or if the destination local branch already exists. Or use `stooges track <branch>` to derive the workspace name automatically.
 Use `stooges pr <number>` to create a workspace for a GitHub pull request in the current repository. With no number, Stooges uses the GitHub CLI (`gh`) to list open non-draft PRs in the current repository, lets you pick one interactively, then creates the workspace and checks out that PR; pass `--draft` to include draft PRs in that picker. Stooges checks `gh auth status` first and asks you to authenticate if needed. Same-repo PRs use tracked-branch setup; cross-repo PRs fall back to `gh pr checkout` in the new workspace, then run setup only after checkout succeeds.
-If you optionally enable `eval "$(stooges shell-init zsh)"` (or `bash`), `stooges add`, `stooges branch`, `stooges fork`, `stooges track`, and `stooges pr` will automatically `cd` into the new workspace; pass `--no-cd` to stay where you are.
+If you optionally enable `eval "$(stooges shell-init zsh)"` (or `bash`), `stooges add`, `stooges branch`, `stooges fork`, `stooges track`, and `stooges pr` will automatically `cd` into the new workspace; pass `--no-cd` for one command or set `STOOGES_NO_CD=1` in the environment to stay where you are.
 
 Optional workspace hooks can be configured by adding `setupScript` and/or `teardownScript` to the existing `.stooges-metadata.json`. Keep the required metadata fields that `stooges init` created:
 

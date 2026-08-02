@@ -242,6 +242,7 @@ func TestPRCommandWritesCDTargetForShellIntegration(t *testing.T) {
 	})
 	cdFile := t.TempDir() + "/cd-target"
 	t.Setenv("STOOGES_CD_FILE", cdFile)
+	t.Setenv("STOOGES_NO_CD", "0")
 	cmd.SetArgs([]string{"pr", "37"})
 
 	if err := cmd.Execute(); err != nil {
