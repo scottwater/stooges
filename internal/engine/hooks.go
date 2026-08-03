@@ -44,6 +44,7 @@ func runWorkspaceScript(ctx context.Context, scriptPath string, env workspaceHoo
 	cmd.Env = append(os.Environ(),
 		"STOOGES_CWD="+env.CWD,
 		"STOOGES_MAIN="+env.WorkspaceRoot,
+		"STOOGES_PROJECT="+filepath.Base(filepath.Clean(env.WorkspaceRoot)),
 		"STOOGES_SOURCE="+env.Source,
 		"STOOGES_BRANCH="+env.Branch,
 		"STOOGES_FOLDER="+env.Workspace,

@@ -279,6 +279,7 @@ Relative paths resolve from the workspace root containing `.stooges`. Hooks run 
 Environment:
 - `STOOGES_CWD`: original command cwd
 - `STOOGES_MAIN`: workspace root containing `.stooges`
+- `STOOGES_PROJECT`: workspace root folder name (the project name)
 - `STOOGES_SOURCE`: source workspace name (`base` by default)
 - `STOOGES_BRANCH`: requested/local branch when known
 - `STOOGES_FOLDER`: workspace name

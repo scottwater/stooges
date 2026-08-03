@@ -2,6 +2,11 @@
 
 Newest entries are listed first.
 
+## 0.86 — 2026-08-03
+
+### Added
+- `STOOGES_PROJECT` is now available to setup and teardown hooks, containing the workspace root folder name so scripts can use the project name without hard-coding it.
+
 ## 0.85 — 2026-08-02
 
 ### Added

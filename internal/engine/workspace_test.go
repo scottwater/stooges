@@ -698,6 +698,7 @@ func TestTrashRunsTeardownScriptBeforeRemoval(t *testing.T) {
 {
   printf 'folder=%s\n' "$STOOGES_FOLDER"
   printf 'path=%s\n' "$STOOGES_FOLDER_PATH"
+  printf 'project=%s\n' "$STOOGES_PROJECT"
   printf 'source=%s\n' "$STOOGES_SOURCE"
   printf 'branch=%s\n' "$STOOGES_BRANCH"
   test -d "$STOOGES_FOLDER_PATH" && printf 'exists=yes\n'
@@ -725,6 +726,7 @@ func TestTrashRunsTeardownScriptBeforeRemoval(t *testing.T) {
 	for _, want := range []string{
 		"folder=moe",
 		"path=" + filepath.Join(workspace, "moe"),
+		"project=" + filepath.Base(workspace),
 		"source=base",
 		"branch=feature/moe",
 		"exists=yes",
@@ -918,6 +920,7 @@ func TestMakeRunsSetupScriptWithWorkspaceEnv(t *testing.T) {
 {
   printf 'cwd=%s\n' "$STOOGES_CWD"
   printf 'main=%s\n' "$STOOGES_MAIN"
+  printf 'project=%s\n' "$STOOGES_PROJECT"
   printf 'source=%s\n' "$STOOGES_SOURCE"
   printf 'branch=%s\n' "$STOOGES_BRANCH"
   printf 'folder=%s\n' "$STOOGES_FOLDER"
@@ -958,6 +961,7 @@ func TestMakeRunsSetupScriptWithWorkspaceEnv(t *testing.T) {
 	for _, want := range []string{
 		"cwd=" + cwd,
 		"main=" + workspace,
+		"project=" + filepath.Base(workspace),
 		"source=base",
 		"branch=feature/bob",
 		"folder=bob",

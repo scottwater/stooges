@@ -138,7 +138,7 @@ Optional workspace hooks can be configured by adding `setupScript` and/or `teard
 }
 ```
 
-Relative hook paths resolve from the workspace root (the directory containing `.stooges`). Setup runs after clone/branch checkout for new workspaces, and after successful `gh pr checkout` for cross-repo PRs, not during the initial `stooges init`. Teardown runs before `stooges trash <workspace>`. Hooks run from the workspace directory with `STOOGES_CWD`, `STOOGES_MAIN`, `STOOGES_SOURCE`, `STOOGES_BRANCH`, `STOOGES_FOLDER`, and `STOOGES_FOLDER_PATH` set. Setup failures leave the workspace in place and managed by default; pass `--rollback-on-setup-failure` to `add`, `branch`, `fork`, `track`, or `pr` to remove created workspace(s), or `--no-setup` to skip the hook.
+Relative hook paths resolve from the workspace root (the directory containing `.stooges`). Setup runs after clone/branch checkout for new workspaces, and after successful `gh pr checkout` for cross-repo PRs, not during the initial `stooges init`. Teardown runs before `stooges trash <workspace>`. Hooks run from the workspace directory with `STOOGES_CWD`, `STOOGES_MAIN`, `STOOGES_PROJECT` (the workspace root folder name), `STOOGES_SOURCE`, `STOOGES_BRANCH`, `STOOGES_FOLDER`, and `STOOGES_FOLDER_PATH` set. Setup failures leave the workspace in place and managed by default; pass `--rollback-on-setup-failure` to `add`, `branch`, `fork`, `track`, or `pr` to remove created workspace(s), or `--no-setup` to skip the hook.
 
 ## Keeping in sync
 
