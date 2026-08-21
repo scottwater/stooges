@@ -1219,6 +1219,60 @@ func TestMakeSerialFailureSummarizesCompletedFailedAndUnstarted(t *testing.T) {
 	}
 }
 
+func TestMakeNoSetupOmitsConfiguredSetupProgress(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	layout.SetupScript = "setup.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteFile(t, filepath.Join(workspace, "setup.sh"), []byte("#!/bin/sh\nexit 42\n"))
+	if err := os.Chmod(filepath.Join(workspace, "setup.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reporter := &recordingCreationReporter{}
+	ctx := WithCreationReporter(context.Background(), reporter, CreationIdentity{Workspace: "bob", Current: 1, Total: 1})
+	if _, err := newTestService(t, workspace, &fakeGit{topLevel: workspace}).Make(ctx, model.MakeOptions{Agent: "bob", Source: "base", NoSetup: true}); err != nil {
+		t.Fatalf("make failed: %v", err)
+	}
+	events, _ := reporter.snapshot()
+	for _, event := range events {
+		if event.Phase == PhaseSetup {
+			t.Fatalf("--no-setup reported setup phase: %#v", events)
+		}
+	}
+}
+
+func TestMakeSerialSuccessReportsIdentityAndCompletion(t *testing.T) {
+	workspace := t.TempDir()
+	mustSetupConfiguredWorkspace(t, workspace, "main")
+	reporter := &recordingCreationReporter{}
+	ctx := WithCreationReporter(context.Background(), reporter, CreationIdentity{Workspace: "default workspaces"})
+	result, err := newTestService(t, workspace, &fakeGit{topLevel: workspace, currentBranch: "main"}).Make(ctx, model.MakeOptions{Source: "base", NoSetup: true})
+	if err != nil {
+		t.Fatalf("make failed: %v", err)
+	}
+	if !slices.Equal(result.Created, model.DefaultAgents) {
+		t.Fatalf("unexpected created workspaces: %#v", result.Created)
+	}
+	events, _ := reporter.snapshot()
+	last := events[len(events)-1]
+	if last.Phase != PhaseCreation || last.Status != ProgressCompleted || !slices.Equal(last.Summary.Completed, model.DefaultAgents) {
+		t.Fatalf("unexpected completion summary: %#v", last)
+	}
+	for index, workspaceName := range model.DefaultAgents {
+		found := false
+		for _, event := range events {
+			if event.Phase == PhaseCopyWorkspace && event.Status == ProgressStarted && event.Workspace == workspaceName {
+				found = event.Current == index+1 && event.Total == len(model.DefaultAgents)
+			}
+		}
+		if !found {
+			t.Fatalf("missing identity for %s in %#v", workspaceName, events)
+		}
+	}
+}
+
 func TestMakePartialCloneFailureReportsRetentionAndCancellation(t *testing.T) {
 	workspace := t.TempDir()
 	mustSetupConfiguredWorkspace(t, workspace, "main")
@@ -1330,6 +1384,36 @@ func TestSetupAndSyncReportThroughDirectServiceBoundaries(t *testing.T) {
 	}
 	if strings.Count(output, "direct\n") != 1 {
 		t.Fatalf("expected direct hook output once, got %q", output)
+	}
+}
+
+func TestSetupFailureReportsOneSetupPhaseThenRollback(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main", "bob")
+	layout.SetupScript = "setup.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteFile(t, filepath.Join(workspace, "setup.sh"), []byte("#!/bin/sh\necho failed\nexit 42\n"))
+	if err := os.Chmod(filepath.Join(workspace, "setup.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reporter := &recordingCreationReporter{}
+	ctx := WithCreationReporter(context.Background(), reporter, CreationIdentity{Workspace: "bob", Current: 1, Total: 1})
+	_, err := newTestService(t, workspace, &fakeGit{topLevel: workspace, currentBranch: "main"}).Setup(ctx, model.SetupOptions{Workspace: "bob", Source: "base", RollbackOnSetupFailure: true})
+	if err == nil {
+		t.Fatal("expected setup failure")
+	}
+	events, output := reporter.snapshot()
+	want := []string{"setup:started:bob", "setup:failed:bob", "rollback:started:bob", "rollback:completed:bob"}
+	if got := progressPairs(events); !slices.Equal(got, want) {
+		t.Fatalf("unexpected setup/rollback events: got %#v want %#v", got, want)
+	}
+	if strings.Count(output, "failed\n") != 1 || strings.Contains(err.Error(), "failed\n") {
+		t.Fatalf("setup transcript duplicated: output=%q err=%v", output, err)
+	}
+	if pathExists(filepath.Join(workspace, "bob")) {
+		t.Fatal("expected requested rollback to remove workspace")
 	}
 }
 
