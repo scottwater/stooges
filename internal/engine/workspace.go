@@ -444,7 +444,9 @@ func (s *Service) runSetupForWorkspace(ctx context.Context, cwd string, layout W
 		}
 		hookBranch = strings.TrimSpace(detected)
 	}
-	return runWorkspaceScript(ctx, layout.SetupScript, setupHookEnv(cwd, layout.WorkspaceRoot, hookSourceName(source), workspace, hookBranch))
+	return runCreationPhase(ctx, CreationProgress{Phase: PhaseSetup, Detail: layout.SetupScript}, func() error {
+		return runWorkspaceScript(ctx, layout.SetupScript, setupHookEnv(cwd, layout.WorkspaceRoot, hookSourceName(source), workspace, hookBranch))
+	})
 }
 
 func (s *Service) RollbackWorkspaceCreation(_ context.Context, workspace string) error {

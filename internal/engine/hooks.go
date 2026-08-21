@@ -1,13 +1,13 @@
 package engine
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	apperrors "github.com/scottwater/stooges/internal/errors"
 )
@@ -50,17 +50,68 @@ func runWorkspaceScript(ctx context.Context, scriptPath string, env workspaceHoo
 		"STOOGES_FOLDER="+env.Workspace,
 		"STOOGES_FOLDER_PATH="+env.WorkspacePath,
 	)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
+	out := newCreationHookWriter(ctx)
+	cmd.Stdout = out
+	cmd.Stderr = out
 	if err := cmd.Run(); err != nil {
-		message := strings.TrimSpace(out.String())
-		if message != "" {
-			return apperrors.Wrap(apperrors.KindFilesystemFailure, fmt.Sprintf("workspace script failed: %s", message), err)
+		cause := err
+		if ctx.Err() != nil {
+			cause = ctx.Err()
 		}
-		return apperrors.Wrap(apperrors.KindFilesystemFailure, "workspace script failed", err)
+		message := fmt.Sprintf("workspace script failed: %s", script)
+		if !out.hasReporter {
+			if tail := strings.TrimSpace(string(out.tailBytes())); tail != "" {
+				message = fmt.Sprintf("%s: %s", message, tail)
+			}
+		}
+		return apperrors.Wrap(apperrors.KindFilesystemFailure, message, cause)
 	}
 	return nil
+}
+
+const creationHookTailLimit = 32 * 1024
+
+type creationHookWriter struct {
+	mu          sync.Mutex
+	ctx         context.Context
+	tail        []byte
+	hasReporter bool
+}
+
+func newCreationHookWriter(ctx context.Context) *creationHookWriter {
+	reporter, _ := creationReporterFromContext(ctx)
+	return &creationHookWriter{
+		ctx:         ctx,
+		tail:        make([]byte, 0, creationHookTailLimit),
+		hasReporter: reporter != nil,
+	}
+}
+
+func (w *creationHookWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.appendTail(p)
+	WriteCreationHookOutput(w.ctx, p)
+	return len(p), nil
+}
+
+func (w *creationHookWriter) appendTail(p []byte) {
+	if len(p) >= creationHookTailLimit {
+		w.tail = append(w.tail[:0], p[len(p)-creationHookTailLimit:]...)
+		return
+	}
+	if overflow := len(w.tail) + len(p) - creationHookTailLimit; overflow > 0 {
+		copy(w.tail, w.tail[overflow:])
+		w.tail = w.tail[:len(w.tail)-overflow]
+	}
+	w.tail = append(w.tail, p...)
+}
+
+func (w *creationHookWriter) tailBytes() []byte {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]byte(nil), w.tail...)
 }
 
 func resolveWorkspaceScriptPath(workspaceRoot, script string) (string, error) {

@@ -53,7 +53,7 @@ func (s *Service) Trash(ctx context.Context, opts model.TrashOptions) (model.Tra
 		if err != nil {
 			err = apperrors.Wrap(apperrors.KindGitFailure, fmt.Sprintf("detect branch for teardown in %s", workspacePath), err)
 		} else {
-			err = runWorkspaceScript(ctx, layout.TeardownScript, workspaceHookEnv{
+			err = runWorkspaceScript(withoutCreationReporter(ctx), layout.TeardownScript, workspaceHookEnv{
 				CWD:           cwd,
 				WorkspaceRoot: workspaceRoot,
 				Source:        hookSourceName(""),
