@@ -66,8 +66,14 @@ func TestCreationRendererTTYDelaysAndShowsElapsed(t *testing.T) {
 
 func TestCreationRendererSuspendsForCompleteAndPartialHookLines(t *testing.T) {
 	out := &bytes.Buffer{}
-	r := newCreationRenderer(out, rendererConfig{TTY: true, Now: time.Now})
-	r.renderForTest(engine.CreationProgress{Phase: engine.PhaseSetup, Status: engine.ProgressStarted, Workspace: "bob", Current: 1, Total: 1, Detail: "setup.sh"}, "|")
+	delay := make(chan time.Time, 1)
+	ticks := make(chan time.Time)
+	r := newCreationRenderer(out, rendererConfig{TTY: true, Now: time.Now, After: func(time.Duration) <-chan time.Time { return delay }, Tick: ticks})
+	if err := r.Report(engine.CreationProgress{Phase: engine.PhaseSetup, Status: engine.ProgressStarted, Workspace: "bob", Current: 1, Total: 1, Detail: "setup.sh"}); err != nil {
+		t.Fatal(err)
+	}
+	delay <- time.Now()
+	waitForRendererOutput(t, r, out, "Running setup: setup.sh")
 	raw := []byte("\x1b[32mfirst\x1b[0m\npartial")
 	if err := r.HookOutput(raw); err != nil {
 		t.Fatal(err)

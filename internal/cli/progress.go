@@ -216,16 +216,6 @@ func (r *creationRenderer) renderLocked(frame string, now time.Time) {
 	r.writeLocked([]byte(fmt.Sprintf("\r\x1b[2K%s %s — %s%s", frame, creationIdentityLabel(r.current), creationPhaseLabel(r.current), elapsedSuffix(elapsed, false))))
 }
 
-func (r *creationRenderer) renderForTest(event engine.CreationProgress, frame string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.current = event
-	r.current.Status = engine.ProgressStarted
-	r.startedAt = r.now()
-	r.renderLocked(frame, r.now())
-	r.visible = true
-}
-
 func (r *creationRenderer) stopPhaseLocked() {
 	if r.phaseStop != nil {
 		close(r.phaseStop)
@@ -254,7 +244,10 @@ func (r *creationRenderer) writeLocked(p []byte) {
 	if r.writeErr != nil || len(p) == 0 {
 		return
 	}
-	_, err := r.out.Write(p)
+	n, err := r.out.Write(p)
+	if err == nil && n != len(p) {
+		err = io.ErrShortWrite
+	}
 	if err != nil {
 		r.writeErr = err
 	}
