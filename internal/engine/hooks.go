@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -55,7 +56,8 @@ func runWorkspaceScript(ctx context.Context, scriptPath string, env workspaceHoo
 	cmd.Stderr = out
 	if err := cmd.Run(); err != nil {
 		cause := err
-		if ctx.Err() != nil {
+		var exitErr *exec.ExitError
+		if ctx.Err() != nil && (!errors.As(err, &exitErr) || exitErr.ExitCode() < 0) {
 			cause = ctx.Err()
 		}
 		message := fmt.Sprintf("workspace script failed: %s", script)

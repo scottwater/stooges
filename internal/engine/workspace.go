@@ -321,12 +321,36 @@ func (s *Service) Enabled(context.Context, model.EnabledOptions) (model.EnabledR
 	}, nil
 }
 
+type creationRollbackError struct {
+	err        error
+	rolledBack []string
+}
+
+func (e *creationRollbackError) Error() string { return e.err.Error() }
+func (e *creationRollbackError) Unwrap() error { return e.err }
+
 func (s *Service) rollbackCreatedWorkspaces(workspaceRoot string, created []string) error {
+	rolledBack := make([]string, 0, len(created))
 	for i := len(created) - 1; i >= 0; i-- {
 		target := filepath.Join(workspaceRoot, created[i])
 		if err := s.removeAll(target); err != nil {
-			return apperrors.Wrap(apperrors.KindFilesystemFailure, fmt.Sprintf("rollback remove workspace %s", created[i]), err)
+			return &creationRollbackError{
+				err:        apperrors.Wrap(apperrors.KindFilesystemFailure, fmt.Sprintf("rollback remove workspace %s", created[i]), err),
+				rolledBack: rolledBack,
+			}
 		}
+		rolledBack = append([]string{created[i]}, rolledBack...)
+	}
+	return nil
+}
+
+func rolledBackWorkspaces(err error, requested []string) []string {
+	if err == nil {
+		return append([]string(nil), requested...)
+	}
+	var rollbackErr *creationRollbackError
+	if errors.As(err, &rollbackErr) {
+		return append([]string(nil), rollbackErr.rolledBack...)
 	}
 	return nil
 }
@@ -335,7 +359,13 @@ func (s *Service) runCreationRollback(ctx context.Context, workspaceRoot string,
 	if len(created) == 0 {
 		return nil
 	}
-	return runCreationPhase(ctx, CreationProgress{Phase: PhaseRollback, Workspace: created[len(created)-1]}, func() error {
+	_, identity := creationReporterFromContext(ctx)
+	return runCreationPhase(ctx, CreationProgress{
+		Phase:     PhaseRollback,
+		Workspace: created[len(created)-1],
+		Current:   len(created),
+		Total:     identity.Total,
+	}, func() error {
 		return s.rollbackCreatedWorkspaces(workspaceRoot, created)
 	})
 }
@@ -457,17 +487,24 @@ func (s *Service) runSetupForWorkspace(ctx context.Context, cwd string, layout W
 		return nil
 	}
 	workspacePath := filepath.Join(layout.WorkspaceRoot, workspace)
-	hookBranch := strings.TrimSpace(branch)
-	if hookBranch == "" {
-		detected, err := s.git.BranchName(ctx, workspacePath)
-		if err != nil {
-			return apperrors.Wrap(apperrors.KindGitFailure, fmt.Sprintf("detect branch for setup in %s", workspacePath), err)
-		}
-		hookBranch = strings.TrimSpace(detected)
-	}
 	return runCreationPhase(ctx, CreationProgress{Phase: PhaseSetup, Workspace: workspace, Detail: layout.SetupScript}, func() error {
+		hookBranch := strings.TrimSpace(branch)
+		if hookBranch == "" {
+			detected, err := s.git.BranchName(ctx, workspacePath)
+			if err != nil {
+				return contextualOperationError(ctx, apperrors.Wrap(apperrors.KindGitFailure, fmt.Sprintf("detect branch for setup in %s", workspacePath), err))
+			}
+			hookBranch = strings.TrimSpace(detected)
+		}
 		return runWorkspaceScript(ctx, layout.SetupScript, setupHookEnv(cwd, layout.WorkspaceRoot, hookSourceName(source), workspace, hookBranch))
 	})
+}
+
+func contextualOperationError(ctx context.Context, err error) error {
+	if err == nil || ctx.Err() == nil || errors.Is(err, ctx.Err()) {
+		return err
+	}
+	return errors.Join(err, ctx.Err())
 }
 
 func (s *Service) RollbackWorkspaceCreation(ctx context.Context, workspace string) error {
@@ -594,7 +631,7 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (result mode
 		cloned := false
 		copyErr := runCreationPhase(ctx, CreationProgress{Phase: PhaseCopyWorkspace, Workspace: agent}, func() error {
 			if cloneErr := s.cloner.CloneRepo(ctx, sourcePath, dst); cloneErr != nil {
-				return cloneErr
+				return contextualOperationError(ctx, cloneErr)
 			}
 			cloned = true
 			return s.perms.UnlockWritable(dst)
@@ -602,45 +639,51 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (result mode
 		if copyErr != nil {
 			summary.Failed = agent
 			if !cloned {
+				if pathExists(dst) {
+					summary.RetainedPath = dst
+				}
 				return model.MakeResult{}, copyErr
 			}
-			rollbackErr := s.runCreationRollback(ctx, workspaceRoot, []string{agent})
+			rollbackTargets := []string{agent}
+			rollbackErr := s.runCreationRollback(ctx, workspaceRoot, rollbackTargets)
+			summary.RolledBack = rolledBackWorkspaces(rollbackErr, rollbackTargets)
 			if rollbackErr != nil {
 				summary.RollbackError = rollbackErr.Error()
 				return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(copyErr, rollbackErr))
 			}
-			summary.RolledBack = []string{agent}
 			return model.MakeResult{}, copyErr
 		}
 		if trackingEnabled {
 			trackErr := runCreationPhase(ctx, CreationProgress{Phase: PhaseConfigureTracking, Workspace: agent, Detail: trackRemote}, func() error {
-				return s.checkoutTrackingBranch(ctx, dst, trackRemote, trackLocal)
+				return contextualOperationError(ctx, s.checkoutTrackingBranch(ctx, dst, trackRemote, trackLocal))
 			})
 			if trackErr != nil {
 				summary.Failed = agent
-				rollbackErr := s.runCreationRollback(ctx, workspaceRoot, []string{agent})
+				rollbackTargets := []string{agent}
+				rollbackErr := s.runCreationRollback(ctx, workspaceRoot, rollbackTargets)
+				summary.RolledBack = rolledBackWorkspaces(rollbackErr, rollbackTargets)
 				if rollbackErr != nil {
 					summary.RollbackError = rollbackErr.Error()
 					return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(trackErr, rollbackErr))
 				}
-				summary.RolledBack = []string{agent}
 				return model.MakeResult{}, trackErr
 			}
 		} else if shouldSwitchBranch {
 			branchErr := runCreationPhase(ctx, CreationProgress{Phase: PhaseConfigureBranch, Workspace: agent, Detail: targetBranch}, func() error {
 				if opts.RequireNewBranch {
-					return s.createNewLocalBranch(ctx, dst, targetBranch)
+					return contextualOperationError(ctx, s.createNewLocalBranch(ctx, dst, targetBranch))
 				}
-				return s.checkoutOrCreateBranch(ctx, dst, targetBranch)
+				return contextualOperationError(ctx, s.checkoutOrCreateBranch(ctx, dst, targetBranch))
 			})
 			if branchErr != nil {
 				summary.Failed = agent
-				rollbackErr := s.runCreationRollback(ctx, workspaceRoot, []string{agent})
+				rollbackTargets := []string{agent}
+				rollbackErr := s.runCreationRollback(ctx, workspaceRoot, rollbackTargets)
+				summary.RolledBack = rolledBackWorkspaces(rollbackErr, rollbackTargets)
 				if rollbackErr != nil {
 					summary.RollbackError = rollbackErr.Error()
 					return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(branchErr, rollbackErr))
 				}
-				summary.RolledBack = []string{agent}
 				return model.MakeResult{}, branchErr
 			}
 		}
@@ -661,10 +704,9 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (result mode
 				}
 				failureResult, failureErr, rollbackErr := s.setupFailureResult(ctx, workspaceRoot, created, setupErr, opts.RollbackOnSetupFailure)
 				if opts.RollbackOnSetupFailure {
+					summary.RolledBack = rolledBackWorkspaces(rollbackErr, created)
 					if rollbackErr != nil {
 						summary.RollbackError = rollbackErr.Error()
-					} else {
-						summary.RolledBack = append([]string(nil), created...)
 					}
 				}
 				return failureResult, failureErr
@@ -673,12 +715,13 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (result mode
 		layout.ManagedWorkspaces = appendManagedWorkspaces(layout.ManagedWorkspaces, agent)
 		if metadataErr := writeWorkspaceMetadata(layout); metadataErr != nil {
 			summary.Failed = agent
-			rollbackErr := s.runCreationRollback(ctx, workspaceRoot, []string{agent})
+			rollbackTargets := []string{agent}
+			rollbackErr := s.runCreationRollback(ctx, workspaceRoot, rollbackTargets)
+			summary.RolledBack = rolledBackWorkspaces(rollbackErr, rollbackTargets)
 			if rollbackErr != nil {
 				summary.RollbackError = rollbackErr.Error()
 				return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(metadataErr, rollbackErr))
 			}
-			summary.RolledBack = []string{agent}
 			return model.MakeResult{}, metadataErr
 		}
 		summary.Completed = []string{agent}
@@ -717,7 +760,7 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (result mode
 		cloned := false
 		copyErr := runCreationPhase(workspaceCtx, CreationProgress{Phase: PhaseCopyWorkspace}, func() error {
 			if cloneErr := s.cloner.CloneRepo(workspaceCtx, sourcePath, dst); cloneErr != nil {
-				return cloneErr
+				return contextualOperationError(workspaceCtx, cloneErr)
 			}
 			cloned = true
 			return s.perms.UnlockWritable(dst)
@@ -729,13 +772,15 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (result mode
 			rollbackTargets := append([]string(nil), created...)
 			if cloned {
 				rollbackTargets = append(rollbackTargets, agent)
+			} else if pathExists(dst) {
+				summary.RetainedPath = dst
 			}
 			rollbackErr := s.runCreationRollback(workspaceCtx, workspaceRoot, rollbackTargets)
+			summary.RolledBack = rolledBackWorkspaces(rollbackErr, rollbackTargets)
 			if rollbackErr != nil {
 				summary.RollbackError = rollbackErr.Error()
 				return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(copyErr, rollbackErr))
 			}
-			summary.RolledBack = rollbackTargets
 			return model.MakeResult{}, copyErr
 		}
 		if shouldSwitchBranch {
@@ -744,7 +789,7 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (result mode
 				branch = agent
 			}
 			branchErr := runCreationPhase(workspaceCtx, CreationProgress{Phase: PhaseConfigureBranch, Detail: branch}, func() error {
-				return s.checkoutOrCreateBranch(workspaceCtx, dst, branch)
+				return contextualOperationError(workspaceCtx, s.checkoutOrCreateBranch(workspaceCtx, dst, branch))
 			})
 			if branchErr != nil {
 				summary.Completed = append([]string(nil), created...)
@@ -752,11 +797,11 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (result mode
 				summary.Unstarted = append([]string(nil), missing[i+1:]...)
 				rollbackTargets := append(append([]string(nil), created...), agent)
 				rollbackErr := s.runCreationRollback(workspaceCtx, workspaceRoot, rollbackTargets)
+				summary.RolledBack = rolledBackWorkspaces(rollbackErr, rollbackTargets)
 				if rollbackErr != nil {
 					summary.RollbackError = rollbackErr.Error()
 					return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(branchErr, rollbackErr))
 				}
-				summary.RolledBack = rollbackTargets
 				return model.MakeResult{}, branchErr
 			}
 		}
@@ -779,10 +824,9 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (result mode
 				}
 				failureResult, failureErr, rollbackErr := s.setupFailureResult(workspaceCtx, workspaceRoot, created, setupErr, opts.RollbackOnSetupFailure)
 				if opts.RollbackOnSetupFailure {
+					summary.RolledBack = rolledBackWorkspaces(rollbackErr, created)
 					if rollbackErr != nil {
 						summary.RollbackError = rollbackErr.Error()
-					} else {
-						summary.RolledBack = append([]string(nil), created...)
 					}
 				}
 				return failureResult, failureErr
@@ -793,11 +837,11 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (result mode
 	layout.ManagedWorkspaces = appendManagedWorkspaces(layout.ManagedWorkspaces, created...)
 	if metadataErr := writeWorkspaceMetadata(layout); metadataErr != nil {
 		rollbackErr := s.runCreationRollback(ctx, workspaceRoot, created)
+		summary.RolledBack = rolledBackWorkspaces(rollbackErr, created)
 		if rollbackErr != nil {
 			summary.RollbackError = rollbackErr.Error()
 			return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(metadataErr, rollbackErr))
 		}
-		summary.RolledBack = append([]string(nil), created...)
 		return model.MakeResult{}, metadataErr
 	}
 
@@ -813,7 +857,7 @@ func (s *Service) Sync(ctx context.Context, opts model.SyncOptions) (model.SyncR
 	err := runCreationPhase(ctx, CreationProgress{Phase: PhaseSyncBase, Detail: strings.TrimSpace(opts.Repo)}, func() error {
 		var syncErr error
 		result, syncErr = s.syncRepo(ctx, opts.Repo, false)
-		return syncErr
+		return contextualOperationError(ctx, syncErr)
 	})
 	return result, err
 }

@@ -46,6 +46,21 @@ func (f *failAfterNClones) CloneRepo(_ context.Context, src, dst string) error {
 	return testutil.CopyDir(src, dst)
 }
 
+type partialFailCloner struct {
+	cancel context.CancelFunc
+}
+
+func (partialFailCloner) CheckCapability(context.Context) error { return nil }
+func (f partialFailCloner) CloneRepo(_ context.Context, _, dst string) error {
+	if err := os.MkdirAll(filepath.Join(dst, ".git"), 0o755); err != nil {
+		return err
+	}
+	if f.cancel != nil {
+		f.cancel()
+	}
+	return errors.New("clone interrupted")
+}
+
 type fakePerms struct {
 	unlockCalls int
 	lockCalls   int
@@ -1138,6 +1153,16 @@ func TestMakeCancellationUsesExistingRetentionAndRollbackPolicies(t *testing.T) 
 			if !found {
 				t.Fatalf("missing cancelled setup event: %#v", events)
 			}
+			last := events[len(events)-1]
+			if last.Phase != PhaseCreation || last.Status != ProgressCancelled {
+				t.Fatalf("expected terminal creation cancellation, got %#v", last)
+			}
+			if rollback && !slices.Equal(last.Summary.RolledBack, []string{"bob"}) {
+				t.Fatalf("expected cancellation rollback summary, got %#v", last.Summary)
+			}
+			if !rollback && last.Summary.RetainedPath != filepath.Join(workspace, "bob") {
+				t.Fatalf("expected cancellation retention summary, got %#v", last.Summary)
+			}
 		})
 	}
 }
@@ -1191,6 +1216,140 @@ func TestMakeSerialFailureSummarizesCompletedFailedAndUnstarted(t *testing.T) {
 		if event.Workspace == "curly" && (event.Current != 2 || event.Total != 3) {
 			t.Fatalf("bad curly ordinal: %#v", event)
 		}
+	}
+}
+
+func TestMakePartialCloneFailureReportsRetentionAndCancellation(t *testing.T) {
+	workspace := t.TempDir()
+	mustSetupConfiguredWorkspace(t, workspace, "main")
+	ctx, cancel := context.WithCancel(context.Background())
+	cloner := partialFailCloner{cancel: cancel}
+	git := &fakeGit{topLevel: workspace}
+	svc := NewServiceWithDeps(Dependencies{
+		CWD:            func() (string, error) { return workspace, nil },
+		Chdir:          func(string) error { return nil },
+		Cloner:         cloner,
+		Perms:          &fakePerms{},
+		Git:            git,
+		Preflight:      NewPreflightChecker(cloner),
+		Resolver:       NewRepoResolver(git),
+		BranchDetector: NewBranchDetector(git),
+	})
+	reporter := &recordingCreationReporter{}
+	ctx = WithCreationReporter(ctx, reporter, CreationIdentity{Workspace: "bob", Current: 1, Total: 1})
+	_, err := svc.Make(ctx, model.MakeOptions{Agent: "bob", Source: "base"})
+	if err == nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected preserved cancellation, got %v", err)
+	}
+	events, _ := reporter.snapshot()
+	last := events[len(events)-1]
+	if last.Status != ProgressCancelled || last.Summary.RetainedPath != filepath.Join(workspace, "bob") {
+		t.Fatalf("expected cancelled retained partial clone, got %#v", last)
+	}
+}
+
+func TestMakeRollbackFailureReportsCompletedCleanupBeforeFailure(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	layout.SetupScript = "setup.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatal(err)
+	}
+	body := "#!/bin/sh\nif [ \"$STOOGES_FOLDER\" = moe ]; then exit 42; fi\n"
+	mustWriteFile(t, filepath.Join(workspace, "setup.sh"), []byte(body))
+	if err := os.Chmod(filepath.Join(workspace, "setup.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git := &fakeGit{topLevel: workspace, currentBranch: "main"}
+	cloner := fakeCloner{}
+	svc := NewServiceWithDeps(Dependencies{
+		CWD:            func() (string, error) { return workspace, nil },
+		Chdir:          func(string) error { return nil },
+		Cloner:         cloner,
+		Perms:          &fakePerms{},
+		Git:            git,
+		Preflight:      NewPreflightChecker(cloner),
+		Resolver:       NewRepoResolver(git),
+		BranchDetector: NewBranchDetector(git),
+		RemoveAll: func(path string) error {
+			if filepath.Base(path) == "curly" {
+				return errors.New("curly busy")
+			}
+			return os.RemoveAll(path)
+		},
+	})
+	reporter := &recordingCreationReporter{}
+	ctx := WithCreationReporter(context.Background(), reporter, CreationIdentity{Workspace: "default workspaces"})
+	_, err := svc.Make(ctx, model.MakeOptions{Source: "base", RollbackOnSetupFailure: true})
+	if err == nil || !strings.Contains(err.Error(), "setup failed and rollback failed") {
+		t.Fatalf("expected combined setup/rollback failure, got %v", err)
+	}
+	events, _ := reporter.snapshot()
+	last := events[len(events)-1]
+	if !slices.Equal(last.Summary.RolledBack, []string{"moe"}) || !strings.Contains(last.Summary.RollbackError, "curly busy") {
+		t.Fatalf("expected partial rollback state, got %#v", last.Summary)
+	}
+	var rollbackEvent CreationProgress
+	for _, event := range events {
+		if event.Phase == PhaseRollback && event.Status == ProgressFailed {
+			rollbackEvent = event
+		}
+	}
+	if rollbackEvent.Workspace != "moe" || rollbackEvent.Current != 3 || rollbackEvent.Total != 3 {
+		t.Fatalf("unexpected rollback identity: %#v", rollbackEvent)
+	}
+}
+
+func TestSetupAndSyncReportThroughDirectServiceBoundaries(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main", "bob")
+	layout.SetupScript = "setup.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteFile(t, filepath.Join(workspace, "setup.sh"), []byte("#!/bin/sh\necho direct\n"))
+	if err := os.Chmod(filepath.Join(workspace, "setup.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git := &fakeGit{topLevel: workspace, currentBranch: "main"}
+	svc := newTestService(t, workspace, git)
+	reporter := &recordingCreationReporter{}
+	ctx := WithCreationReporter(context.Background(), reporter, CreationIdentity{Workspace: "bob", Current: 1, Total: 1})
+	if _, err := svc.Sync(ctx, model.SyncOptions{}); err != nil {
+		t.Fatalf("sync failed: %v", err)
+	}
+	if _, err := svc.Setup(ctx, model.SetupOptions{Workspace: "bob", Source: "base"}); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	events, output := reporter.snapshot()
+	pairs := progressPairs(events)
+	for _, want := range []string{"sync-base:started:bob", "sync-base:completed:bob", "setup:started:bob", "setup:completed:bob"} {
+		if !slices.Contains(pairs, want) {
+			t.Fatalf("missing %q in %#v", want, pairs)
+		}
+	}
+	if strings.Count(output, "direct\n") != 1 {
+		t.Fatalf("expected direct hook output once, got %q", output)
+	}
+}
+
+func TestSetupBranchDetectionFailureStillReportsSetupPhase(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main", "bob")
+	layout.SetupScript = "setup.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatal(err)
+	}
+	git := &fakeGit{topLevel: workspace, branchNameErr: errors.New("detached HEAD")}
+	reporter := &recordingCreationReporter{}
+	ctx := WithCreationReporter(context.Background(), reporter, CreationIdentity{Workspace: "bob", Current: 1, Total: 1})
+	_, err := newTestService(t, workspace, git).Setup(ctx, model.SetupOptions{Workspace: "bob", Source: "base"})
+	if err == nil {
+		t.Fatal("expected branch detection failure")
+	}
+	events, _ := reporter.snapshot()
+	if got := progressPairs(events); !slices.Equal(got, []string{"setup:started:bob", "setup:failed:bob"}) {
+		t.Fatalf("unexpected setup events: %#v", got)
 	}
 }
 

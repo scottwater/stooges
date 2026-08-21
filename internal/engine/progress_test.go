@@ -65,18 +65,29 @@ func TestRunCreationPhaseReportsIdentityElapsedAndCompletion(t *testing.T) {
 	}
 }
 
-func TestRunCreationPhaseReportsCancellationWithoutChangingError(t *testing.T) {
-	reporter := &recordingCreationReporter{}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	ctx = WithCreationReporter(ctx, reporter, CreationIdentity{Workspace: "bob", Current: 1, Total: 1})
-	err := runCreationPhase(ctx, CreationProgress{Phase: PhaseSetup, Detail: "setup.sh"}, func() error { return ctx.Err() })
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("expected context cancellation, got %v", err)
-	}
-	events, _ := reporter.snapshot()
-	if got := events[len(events)-1].Status; got != ProgressCancelled {
-		t.Fatalf("expected cancelled, got %s", got)
+func TestRunCreationPhaseReturnsExactErrorAndReportsStatus(t *testing.T) {
+	ordinaryErr := errors.New("ordinary failure")
+	for _, tc := range []struct {
+		name   string
+		opErr  error
+		status CreationStatus
+	}{
+		{name: "failure", opErr: ordinaryErr, status: ProgressFailed},
+		{name: "cancellation", opErr: context.Canceled, status: ProgressCancelled},
+		{name: "deadline", opErr: context.DeadlineExceeded, status: ProgressCancelled},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reporter := &recordingCreationReporter{reportErr: errors.New("closed stderr")}
+			ctx := WithCreationReporter(context.Background(), reporter, CreationIdentity{Workspace: "bob", Current: 1, Total: 1})
+			err := runCreationPhase(ctx, CreationProgress{Phase: PhaseSetup, Detail: "setup.sh"}, func() error { return tc.opErr })
+			if err != tc.opErr {
+				t.Fatalf("operation error changed: got %v want exact %v", err, tc.opErr)
+			}
+			events, _ := reporter.snapshot()
+			if got := events[len(events)-1].Status; got != tc.status {
+				t.Fatalf("expected %s, got %s", tc.status, got)
+			}
+		})
 	}
 }
 
@@ -98,10 +109,9 @@ func TestRunWorkspaceScriptStreamsBothChannelsAndPreservesBytes(t *testing.T) {
 		t.Fatalf("script failed: %v", err)
 	}
 	_, output := reporter.snapshot()
-	for _, want := range []string{"\x1b[32mstdout\x1b[0m\n", "stderr\n", "partial"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("missing %q in %q", want, output)
-		}
+	want := "\x1b[32mstdout\x1b[0m\nstderr\npartial"
+	if output != want {
+		t.Fatalf("hook bytes changed or duplicated: got %q want %q", output, want)
 	}
 }
 
@@ -120,6 +130,46 @@ func TestRunWorkspaceScriptIgnoresReporterFailures(t *testing.T) {
 	if err := runWorkspaceScript(ctx, script, workspaceHookEnv{WorkspaceRoot: root, Workspace: "bob", WorkspacePath: workspace}); err != nil {
 		t.Fatalf("reporter failure changed hook result: %v", err)
 	}
+}
+
+func TestCreationHookWriterKeepsExactBoundedSuffix(t *testing.T) {
+	writer := newCreationHookWriter(context.Background())
+	input := bytes.Repeat([]byte("x"), creationHookTailLimit+17)
+	if n, err := writer.Write(input); err != nil || n != len(input) {
+		t.Fatalf("write failed: n=%d err=%v", n, err)
+	}
+	tail := writer.tailBytes()
+	if len(tail) != creationHookTailLimit || !bytes.Equal(tail, input[len(input)-creationHookTailLimit:]) {
+		t.Fatalf("tail is not exact %d-byte suffix", creationHookTailLimit)
+	}
+}
+
+func TestReporterReceivesDefensiveCopies(t *testing.T) {
+	reporter := &mutatingCreationReporter{}
+	ctx := WithCreationReporter(context.Background(), reporter, CreationIdentity{})
+	completed := []string{"larry"}
+	payload := []byte("hook")
+	ReportCreationProgress(ctx, CreationProgress{Phase: PhaseCreation, Summary: CreationSummary{Completed: completed}})
+	WriteCreationHookOutput(ctx, payload)
+	if completed[0] != "larry" || string(payload) != "hook" {
+		t.Fatalf("reporter mutated caller-owned values: completed=%q payload=%q", completed, payload)
+	}
+}
+
+type mutatingCreationReporter struct{}
+
+func (mutatingCreationReporter) Report(event CreationProgress) error {
+	if len(event.Summary.Completed) > 0 {
+		event.Summary.Completed[0] = "changed"
+	}
+	return errors.New("ignored")
+}
+
+func (mutatingCreationReporter) HookOutput(p []byte) error {
+	if len(p) > 0 {
+		p[0] = 'X'
+	}
+	return errors.New("ignored")
 }
 
 func TestRunWorkspaceScriptFailureUsesBoundedTailWithoutReporter(t *testing.T) {
