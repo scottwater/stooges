@@ -77,7 +77,7 @@ Behavior:
 - `--no-setup` skips the configured setup script.
 - `--rollback-on-setup-failure` removes created workspace(s) if setup fails. Default is to leave failed setup workspaces in place and managed.
 - Workspace creation through `add`, `branch`, `fork`, `track`, and `pr` reports applicable phases: `Syncing base`, `Copying workspace`, `Configuring branch`, `Configuring tracking`, `Checking out PR`, `Running setup: <configured-path>`, and `Rolling back workspace`.
-- Interactive terminals use one delayed transient spinner, adding elapsed time after one second. Non-TTY stderr receives durable phase start and completion lines.
+- Interactive terminals use one delayed transient spinner, adding elapsed time after one second. Non-TTY stderr receives durable phase start and completion lines. Workspace ordinals such as `[2/3]` appear only for multi-workspace creation; single-workspace progress shows the workspace name without `[1/1]`.
 - Progress plus setup-hook stdout and stderr are diagnostics on Stooges' stderr. Stooges' stdout remains the result channel for `created:`, `checked out:`, and guidance output.
 - A missing `setupScript` or `--no-setup` omits setup progress entirely.
 

@@ -23,9 +23,21 @@ func TestCreationRendererNonTTYPrintsDurableLines(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.Close()
-	want := "[1/1] bob: Copying workspace...\n[1/1] bob: Copying workspace done (1.5s)\n"
+	want := "bob: Copying workspace...\nbob: Copying workspace done (1.5s)\n"
 	if got := out.String(); got != want {
 		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestCreationRendererShowsOrdinalForMultipleWorkspaces(t *testing.T) {
+	out := &bytes.Buffer{}
+	r := newCreationRenderer(out, rendererConfig{TTY: false, Now: time.Now})
+	if err := r.Report(engine.CreationProgress{Phase: engine.PhaseCopyWorkspace, Status: engine.ProgressStarted, Workspace: "curly", Current: 2, Total: 3}); err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	if got := out.String(); got != "[2/3] curly: Copying workspace...\n" {
+		t.Fatalf("unexpected multi-workspace label: %q", got)
 	}
 }
 
@@ -123,7 +135,7 @@ func TestCreationRendererLeavesFailureAndCancellationLines(t *testing.T) {
 				t.Fatal(err)
 			}
 			r.Close()
-			if !strings.Contains(out.String(), "! [1/1] bob — Running setup: setup.sh "+tc.word+" (2.0s)\n") {
+			if !strings.Contains(out.String(), "! bob — Running setup: setup.sh "+tc.word+" (2.0s)\n") {
 				t.Fatalf("unexpected terminal line: %q", out.String())
 			}
 		})

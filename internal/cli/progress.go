@@ -298,7 +298,7 @@ func creationIdentityLabel(event engine.CreationProgress) string {
 	if workspace == "" {
 		workspace = "workspace"
 	}
-	if event.Current > 0 && event.Total > 0 {
+	if event.Current > 0 && event.Total > 1 {
 		return fmt.Sprintf("[%d/%d] %s", event.Current, event.Total, workspace)
 	}
 	return workspace
