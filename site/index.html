@@ -755,6 +755,10 @@
           <h3>Built for Agents</h3>
           <p>Run multiple AI coding agents in parallel, each in its own isolated workspace. No stepping on toes.</p>
         </div>
+        <div class="feature" data-number="REEL V">
+          <h3>Visible Progress</h3>
+          <p>Workspace creation shows one clean, delayed progress spinner in a terminal, durable stderr phases in CI, and live setup output during long-running hooks.</p>
+        </div>
       </div>
     </section>
 
@@ -814,7 +818,7 @@
       <div class="scene" data-scene="FB.">
         <p class="scene-title">Hooks &amp; Cleanup</p>
         <code><span style="color:var(--mid)">$</span> stooges trash auto-cd --force</code>
-        <p>Add <code>setupScript</code> and <code>teardownScript</code> to the existing <code>.stooges-metadata.json</code> to automate per-workspace setup and cleanup. Both hooks receive <code>STOOGES_PROJECT</code> with the project folder name, so scripts do not need to hard-code it. Setup runs after checkout; pass <code>--no-setup</code> or <code>--rollback-on-setup-failure</code> on add/branch/fork/track/pr when needed. Trash preflights removal, runs teardown, then uses Trash or forced deletion.</p>
+        <p>Add <code>setupScript</code> and <code>teardownScript</code> to the existing <code>.stooges-metadata.json</code> to automate per-workspace setup and cleanup. Both hooks receive <code>STOOGES_PROJECT</code> with the project folder name, so scripts do not need to hard-code it. Setup runs after checkout; pass <code>--no-setup</code> or <code>--rollback-on-setup-failure</code> on add/branch/fork/track/pr when needed. Creation progress and live setup output go to stderr, leaving stdout results and the private auto-CD destination unchanged. Terminals use one delayed transient spinner; CI logs get durable phase lines. Trash preflights removal, runs teardown, then uses Trash or forced deletion.</p>
       </div>
       <div class="command-card">
         <span class="cmd">stooges init</span>

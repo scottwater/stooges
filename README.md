@@ -140,6 +140,10 @@ Optional workspace hooks can be configured by adding `setupScript` and/or `teard
 
 Relative hook paths resolve from the workspace root (the directory containing `.stooges`). Setup runs after clone/branch checkout for new workspaces, and after successful `gh pr checkout` for cross-repo PRs, not during the initial `stooges init`. Teardown runs before `stooges trash <workspace>`. Hooks run from the workspace directory with `STOOGES_CWD`, `STOOGES_MAIN`, `STOOGES_PROJECT` (the workspace root folder name), `STOOGES_SOURCE`, `STOOGES_BRANCH`, `STOOGES_FOLDER`, and `STOOGES_FOLDER_PATH` set. Setup failures leave the workspace in place and managed by default; pass `--rollback-on-setup-failure` to `add`, `branch`, `fork`, `track`, or `pr` to remove created workspace(s), or `--no-setup` to skip the hook.
 
+### Workspace creation progress
+
+`add`, `branch`, `fork`, `track`, and `pr` show the current workspace and creation phase, including base sync, copying, branch or tracking configuration, PR checkout, setup, and rollback when applicable. Interactive terminals use one delayed, transient spinner and show elapsed time for longer phases; redirected or CI stderr receives durable phase start and completion lines instead. Setup-hook stdout and stderr stream live to Stooges' stderr, while command stdout remains the stable result channel for lines such as `created:` and `checked out:`. Successful single-workspace auto-CD still happens only after creation and setup finish. Failures do not auto-CD, and `--no-cd` plus `STOOGES_NO_CD` keep their existing behavior.
+
 ## Keeping in sync
 
 ```bash

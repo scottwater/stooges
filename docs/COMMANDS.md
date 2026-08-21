@@ -76,6 +76,10 @@ Behavior:
 - If `.stooges-metadata.json` has `setupScript`, runs it after clone/branch checkout.
 - `--no-setup` skips the configured setup script.
 - `--rollback-on-setup-failure` removes created workspace(s) if setup fails. Default is to leave failed setup workspaces in place and managed.
+- Workspace creation through `add`, `branch`, `fork`, `track`, and `pr` reports applicable phases: `Syncing base`, `Copying workspace`, `Configuring branch`, `Configuring tracking`, `Checking out PR`, `Running setup: <configured-path>`, and `Rolling back workspace`.
+- Interactive terminals use one delayed transient spinner, adding elapsed time after one second. Non-TTY stderr receives durable phase start and completion lines.
+- Progress plus setup-hook stdout and stderr are diagnostics on Stooges' stderr. Stooges' stdout remains the result channel for `created:`, `checked out:`, and guidance output.
+- A missing `setupScript` or `--no-setup` omits setup progress entirely.
 
 Examples:
 
@@ -284,6 +288,8 @@ Environment:
 - `STOOGES_BRANCH`: requested/local branch when known
 - `STOOGES_FOLDER`: workspace name
 - `STOOGES_FOLDER_PATH`: workspace absolute path
+
+During workspace creation, setup-hook stdout and stderr stream live to Stooges' stderr without prefixes or ANSI rewriting. A TTY spinner moves out of the way for complete hook lines and resumes afterward; an incomplete trailing line is held only until the hook writes its newline or exits. Failure errors name the configured setup path and exit status without replaying output that already streamed. Successful single-workspace auto-CD still uses the private `STOOGES_CD_FILE` protocol after setup succeeds; hook output cannot become that destination. Setup failure does not auto-CD, and `--no-cd` plus `STOOGES_NO_CD` are unchanged.
 
 ## `unlock`
 
