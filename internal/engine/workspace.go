@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	apperrors "github.com/scottwater/stooges/internal/errors"
 	"github.com/scottwater/stooges/internal/fs"
@@ -46,6 +47,7 @@ type Dependencies struct {
 	Preflight      *PreflightChecker
 	Resolver       *RepoResolver
 	BranchDetector *BranchDetector
+	RemoveAll      func(string) error
 }
 
 type Service struct {
@@ -57,6 +59,7 @@ type Service struct {
 	preflight      *PreflightChecker
 	resolver       *RepoResolver
 	branchDetector *BranchDetector
+	removeAll      func(string) error
 }
 
 type CurrentWorkspace struct {
@@ -92,6 +95,9 @@ func NewServiceWithDeps(deps Dependencies) *Service {
 	if deps.Chdir == nil {
 		deps.Chdir = os.Chdir
 	}
+	if deps.RemoveAll == nil {
+		deps.RemoveAll = os.RemoveAll
+	}
 	return &Service{
 		cwd:            deps.CWD,
 		chdir:          deps.Chdir,
@@ -101,6 +107,7 @@ func NewServiceWithDeps(deps Dependencies) *Service {
 		preflight:      deps.Preflight,
 		resolver:       deps.Resolver,
 		branchDetector: deps.BranchDetector,
+		removeAll:      deps.RemoveAll,
 	}
 }
 
@@ -314,14 +321,23 @@ func (s *Service) Enabled(context.Context, model.EnabledOptions) (model.EnabledR
 	}, nil
 }
 
-func rollbackCreatedWorkspaces(workspaceRoot string, created []string) error {
+func (s *Service) rollbackCreatedWorkspaces(workspaceRoot string, created []string) error {
 	for i := len(created) - 1; i >= 0; i-- {
 		target := filepath.Join(workspaceRoot, created[i])
-		if err := os.RemoveAll(target); err != nil {
+		if err := s.removeAll(target); err != nil {
 			return apperrors.Wrap(apperrors.KindFilesystemFailure, fmt.Sprintf("rollback remove workspace %s", created[i]), err)
 		}
 	}
 	return nil
+}
+
+func (s *Service) runCreationRollback(ctx context.Context, workspaceRoot string, created []string) error {
+	if len(created) == 0 {
+		return nil
+	}
+	return runCreationPhase(ctx, CreationProgress{Phase: PhaseRollback, Workspace: created[len(created)-1]}, func() error {
+		return s.rollbackCreatedWorkspaces(workspaceRoot, created)
+	})
 }
 
 func resolveTargetBranchForWorkspace(opts model.MakeOptions, workspace string, createdCount int) (string, bool, error) {
@@ -407,13 +423,13 @@ func hookSourceName(source string) string {
 	return trimmed
 }
 
-func setupFailureResult(workspaceRoot string, created []string, setupErr error, rollback bool) (model.MakeResult, error) {
+func (s *Service) setupFailureResult(ctx context.Context, workspaceRoot string, created []string, setupErr error, rollback bool) (model.MakeResult, error, error) {
 	if rollback {
-		rollbackErr := rollbackCreatedWorkspaces(workspaceRoot, created)
+		rollbackErr := s.runCreationRollback(ctx, workspaceRoot, created)
 		if rollbackErr != nil {
-			return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "setup failed and rollback failed", errors.Join(setupErr, rollbackErr))
+			return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "setup failed and rollback failed", errors.Join(setupErr, rollbackErr)), rollbackErr
 		}
-		return model.MakeResult{}, apperrors.Wrap(apperrors.KindFilesystemFailure, "setup failed; rolled back created workspace", setupErr)
+		return model.MakeResult{}, apperrors.Wrap(apperrors.KindFilesystemFailure, "setup failed; rolled back created workspace", setupErr), nil
 	}
 	last := ""
 	if len(created) > 0 {
@@ -423,12 +439,17 @@ func setupFailureResult(workspaceRoot string, created []string, setupErr error, 
 	if last != "" {
 		message = fmt.Sprintf("setup failed; workspace left at %s for inspection/cleanup", last)
 	}
-	return model.MakeResult{Created: created, WorkspaceRoot: workspaceRoot}, apperrors.Wrap(apperrors.KindFilesystemFailure, message, setupErr)
+	return model.MakeResult{Created: created, WorkspaceRoot: workspaceRoot}, apperrors.Wrap(apperrors.KindFilesystemFailure, message, setupErr), nil
 }
 
 func setupFailureError(workspaceRoot, workspace string, setupErr error, rollback bool) error {
-	_, err := setupFailureResult(workspaceRoot, []string{workspace}, setupErr, rollback)
-	return err
+	message := "setup failed; workspace left in place for inspection/cleanup"
+	if rollback {
+		message = "setup failed; rolled back created workspace"
+	} else if workspace != "" {
+		message = fmt.Sprintf("setup failed; workspace left at %s for inspection/cleanup", filepath.Join(workspaceRoot, workspace))
+	}
+	return apperrors.Wrap(apperrors.KindFilesystemFailure, message, setupErr)
 }
 
 func (s *Service) runSetupForWorkspace(ctx context.Context, cwd string, layout WorkspaceLayout, source, workspace, branch string) error {
@@ -444,12 +465,12 @@ func (s *Service) runSetupForWorkspace(ctx context.Context, cwd string, layout W
 		}
 		hookBranch = strings.TrimSpace(detected)
 	}
-	return runCreationPhase(ctx, CreationProgress{Phase: PhaseSetup, Detail: layout.SetupScript}, func() error {
+	return runCreationPhase(ctx, CreationProgress{Phase: PhaseSetup, Workspace: workspace, Detail: layout.SetupScript}, func() error {
 		return runWorkspaceScript(ctx, layout.SetupScript, setupHookEnv(cwd, layout.WorkspaceRoot, hookSourceName(source), workspace, hookBranch))
 	})
 }
 
-func (s *Service) RollbackWorkspaceCreation(_ context.Context, workspace string) error {
+func (s *Service) RollbackWorkspaceCreation(ctx context.Context, workspace string) error {
 	workspace = strings.TrimSpace(workspace)
 	if err := validateWorkspaceEntryName(workspace); err != nil {
 		return err
@@ -466,13 +487,15 @@ func (s *Service) RollbackWorkspaceCreation(_ context.Context, workspace string)
 	if err != nil {
 		return err
 	}
-	removeErr := rollbackCreatedWorkspaces(workspaceRoot, []string{workspace})
-	layout.ManagedWorkspaces = removeManagedWorkspace(layout.ManagedWorkspaces, workspace)
-	metadataErr := writeWorkspaceMetadata(layout)
-	if removeErr != nil || metadataErr != nil {
-		return apperrors.Wrap(apperrors.KindRollbackFailure, fmt.Sprintf("rollback workspace %s", workspace), errors.Join(removeErr, metadataErr))
-	}
-	return nil
+	return runCreationPhase(ctx, CreationProgress{Phase: PhaseRollback, Workspace: workspace, Detail: filepath.Join(workspaceRoot, workspace)}, func() error {
+		removeErr := s.rollbackCreatedWorkspaces(workspaceRoot, []string{workspace})
+		layout.ManagedWorkspaces = removeManagedWorkspace(layout.ManagedWorkspaces, workspace)
+		metadataErr := writeWorkspaceMetadata(layout)
+		if removeErr != nil || metadataErr != nil {
+			return apperrors.Wrap(apperrors.KindRollbackFailure, fmt.Sprintf("rollback workspace %s", workspace), errors.Join(removeErr, metadataErr))
+		}
+		return nil
+	})
 }
 
 func (s *Service) Setup(ctx context.Context, opts model.SetupOptions) (model.SetupResult, error) {
@@ -499,11 +522,17 @@ func (s *Service) Setup(ctx context.Context, opts model.SetupOptions) (model.Set
 	result := model.SetupResult{WorkspaceRoot: workspaceRoot, Workspace: workspace, WorkspacePath: workspacePath}
 	if err := s.runSetupForWorkspace(ctx, cwd, layout, opts.Source, workspace, opts.Branch); err != nil {
 		if opts.RollbackOnSetupFailure {
-			rollbackErr := rollbackCreatedWorkspaces(workspaceRoot, []string{workspace})
-			layout.ManagedWorkspaces = removeManagedWorkspace(layout.ManagedWorkspaces, workspace)
-			metadataErr := writeWorkspaceMetadata(layout)
-			if rollbackErr != nil || metadataErr != nil {
-				return model.SetupResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "setup failed and rollback failed", errors.Join(err, rollbackErr, metadataErr))
+			rollbackErr := runCreationPhase(ctx, CreationProgress{Phase: PhaseRollback, Workspace: workspace, Detail: workspacePath}, func() error {
+				removeErr := s.rollbackCreatedWorkspaces(workspaceRoot, []string{workspace})
+				layout.ManagedWorkspaces = removeManagedWorkspace(layout.ManagedWorkspaces, workspace)
+				metadataErr := writeWorkspaceMetadata(layout)
+				if removeErr != nil || metadataErr != nil {
+					return errors.Join(removeErr, metadataErr)
+				}
+				return nil
+			})
+			if rollbackErr != nil {
+				return model.SetupResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "setup failed and rollback failed", errors.Join(err, rollbackErr))
 			}
 		}
 		return result, setupFailureError(workspaceRoot, workspace, err, opts.RollbackOnSetupFailure)
@@ -511,7 +540,20 @@ func (s *Service) Setup(ctx context.Context, opts model.SetupOptions) (model.Set
 	return result, nil
 }
 
-func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (model.MakeResult, error) {
+func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (result model.MakeResult, err error) {
+	started := time.Now()
+	summary := CreationSummary{}
+	terminal := CreationProgress{Phase: PhaseCreation, Workspace: strings.TrimSpace(opts.Agent)}
+	defer func() {
+		if err == nil && len(summary.Completed) == 0 {
+			summary.Completed = append([]string(nil), result.Created...)
+		}
+		terminal.Status = creationStatusForError(err)
+		terminal.Elapsed = time.Since(started)
+		terminal.Summary = summary
+		ReportCreationProgress(ctx, terminal)
+	}()
+
 	cwd, err := s.cwd()
 	if err != nil {
 		return model.MakeResult{}, apperrors.Wrap(apperrors.KindFilesystemFailure, "resolve current working directory", err)
@@ -549,36 +591,56 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (model.MakeR
 		if pathExists(dst) {
 			return model.MakeResult{}, apperrors.New(apperrors.KindInvalidInput, fmt.Sprintf("target already exists: %s (overwrite not allowed)", agent))
 		}
-		if err := s.cloner.CloneRepo(ctx, sourcePath, dst); err != nil {
-			return model.MakeResult{}, err
-		}
-		if err := s.perms.UnlockWritable(dst); err != nil {
-			rollbackErr := rollbackCreatedWorkspaces(workspaceRoot, []string{agent})
-			if rollbackErr != nil {
-				return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(err, rollbackErr))
+		cloned := false
+		copyErr := runCreationPhase(ctx, CreationProgress{Phase: PhaseCopyWorkspace, Workspace: agent}, func() error {
+			if cloneErr := s.cloner.CloneRepo(ctx, sourcePath, dst); cloneErr != nil {
+				return cloneErr
 			}
-			return model.MakeResult{}, err
+			cloned = true
+			return s.perms.UnlockWritable(dst)
+		})
+		if copyErr != nil {
+			summary.Failed = agent
+			if !cloned {
+				return model.MakeResult{}, copyErr
+			}
+			rollbackErr := s.runCreationRollback(ctx, workspaceRoot, []string{agent})
+			if rollbackErr != nil {
+				summary.RollbackError = rollbackErr.Error()
+				return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(copyErr, rollbackErr))
+			}
+			summary.RolledBack = []string{agent}
+			return model.MakeResult{}, copyErr
 		}
 		if trackingEnabled {
-			if err := s.checkoutTrackingBranch(ctx, dst, trackRemote, trackLocal); err != nil {
-				rollbackErr := rollbackCreatedWorkspaces(workspaceRoot, []string{agent})
+			trackErr := runCreationPhase(ctx, CreationProgress{Phase: PhaseConfigureTracking, Workspace: agent, Detail: trackRemote}, func() error {
+				return s.checkoutTrackingBranch(ctx, dst, trackRemote, trackLocal)
+			})
+			if trackErr != nil {
+				summary.Failed = agent
+				rollbackErr := s.runCreationRollback(ctx, workspaceRoot, []string{agent})
 				if rollbackErr != nil {
-					return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(err, rollbackErr))
+					summary.RollbackError = rollbackErr.Error()
+					return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(trackErr, rollbackErr))
 				}
-				return model.MakeResult{}, err
+				summary.RolledBack = []string{agent}
+				return model.MakeResult{}, trackErr
 			}
 		} else if shouldSwitchBranch {
-			var branchErr error
-			if opts.RequireNewBranch {
-				branchErr = s.createNewLocalBranch(ctx, dst, targetBranch)
-			} else {
-				branchErr = s.checkoutOrCreateBranch(ctx, dst, targetBranch)
-			}
+			branchErr := runCreationPhase(ctx, CreationProgress{Phase: PhaseConfigureBranch, Workspace: agent, Detail: targetBranch}, func() error {
+				if opts.RequireNewBranch {
+					return s.createNewLocalBranch(ctx, dst, targetBranch)
+				}
+				return s.checkoutOrCreateBranch(ctx, dst, targetBranch)
+			})
 			if branchErr != nil {
-				rollbackErr := rollbackCreatedWorkspaces(workspaceRoot, []string{agent})
+				summary.Failed = agent
+				rollbackErr := s.runCreationRollback(ctx, workspaceRoot, []string{agent})
 				if rollbackErr != nil {
+					summary.RollbackError = rollbackErr.Error()
 					return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(branchErr, rollbackErr))
 				}
+				summary.RolledBack = []string{agent}
 				return model.MakeResult{}, branchErr
 			}
 		}
@@ -587,25 +649,39 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (model.MakeR
 			hookBranch = trackLocal
 		}
 		if !opts.NoSetup {
-			if err := s.runSetupForWorkspace(ctx, cwd, layout, opts.Source, agent, hookBranch); err != nil {
+			if setupErr := s.runSetupForWorkspace(ctx, cwd, layout, opts.Source, agent, hookBranch); setupErr != nil {
 				created := []string{agent}
+				summary.Failed = agent
 				if !opts.RollbackOnSetupFailure {
+					summary.RetainedPath = dst
 					layout.ManagedWorkspaces = appendManagedWorkspaces(layout.ManagedWorkspaces, created...)
 					if metadataErr := writeWorkspaceMetadata(layout); metadataErr != nil {
-						return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "setup failed and metadata update failed", errors.Join(err, metadataErr))
+						return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "setup failed and metadata update failed", errors.Join(setupErr, metadataErr))
 					}
 				}
-				return setupFailureResult(workspaceRoot, created, err, opts.RollbackOnSetupFailure)
+				failureResult, failureErr, rollbackErr := s.setupFailureResult(ctx, workspaceRoot, created, setupErr, opts.RollbackOnSetupFailure)
+				if opts.RollbackOnSetupFailure {
+					if rollbackErr != nil {
+						summary.RollbackError = rollbackErr.Error()
+					} else {
+						summary.RolledBack = append([]string(nil), created...)
+					}
+				}
+				return failureResult, failureErr
 			}
 		}
 		layout.ManagedWorkspaces = appendManagedWorkspaces(layout.ManagedWorkspaces, agent)
-		if err := writeWorkspaceMetadata(layout); err != nil {
-			rollbackErr := rollbackCreatedWorkspaces(workspaceRoot, []string{agent})
+		if metadataErr := writeWorkspaceMetadata(layout); metadataErr != nil {
+			summary.Failed = agent
+			rollbackErr := s.runCreationRollback(ctx, workspaceRoot, []string{agent})
 			if rollbackErr != nil {
-				return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(err, rollbackErr))
+				summary.RollbackError = rollbackErr.Error()
+				return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(metadataErr, rollbackErr))
 			}
-			return model.MakeResult{}, err
+			summary.RolledBack = []string{agent}
+			return model.MakeResult{}, metadataErr
 		}
+		summary.Completed = []string{agent}
 		return model.MakeResult{Created: []string{agent}, WorkspaceRoot: workspaceRoot}, nil
 	}
 
@@ -628,33 +704,60 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (model.MakeR
 	if err != nil {
 		return model.MakeResult{}, err
 	}
-	for _, agent := range missing {
-		dst := filepath.Join(workspaceRoot, agent)
-		if err := s.cloner.CloneRepo(ctx, sourcePath, dst); err != nil {
-			rollbackErr := rollbackCreatedWorkspaces(workspaceRoot, created)
-			if rollbackErr != nil {
-				return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(err, rollbackErr))
-			}
-			return model.MakeResult{}, err
+	for i, agent := range missing {
+		reporter, _ := creationReporterFromContext(ctx)
+		workspaceCtx := ctx
+		if reporter != nil {
+			workspaceCtx = WithCreationReporter(ctx, reporter, CreationIdentity{Workspace: agent, Current: i + 1, Total: len(missing)})
 		}
-		if err := s.perms.UnlockWritable(dst); err != nil {
-			rollbackErr := rollbackCreatedWorkspaces(workspaceRoot, append(created, agent))
-			if rollbackErr != nil {
-				return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(err, rollbackErr))
+		terminal.Workspace = agent
+		terminal.Current = i + 1
+		terminal.Total = len(missing)
+		dst := filepath.Join(workspaceRoot, agent)
+		cloned := false
+		copyErr := runCreationPhase(workspaceCtx, CreationProgress{Phase: PhaseCopyWorkspace}, func() error {
+			if cloneErr := s.cloner.CloneRepo(workspaceCtx, sourcePath, dst); cloneErr != nil {
+				return cloneErr
 			}
-			return model.MakeResult{}, err
+			cloned = true
+			return s.perms.UnlockWritable(dst)
+		})
+		if copyErr != nil {
+			summary.Completed = append([]string(nil), created...)
+			summary.Failed = agent
+			summary.Unstarted = append([]string(nil), missing[i+1:]...)
+			rollbackTargets := append([]string(nil), created...)
+			if cloned {
+				rollbackTargets = append(rollbackTargets, agent)
+			}
+			rollbackErr := s.runCreationRollback(workspaceCtx, workspaceRoot, rollbackTargets)
+			if rollbackErr != nil {
+				summary.RollbackError = rollbackErr.Error()
+				return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(copyErr, rollbackErr))
+			}
+			summary.RolledBack = rollbackTargets
+			return model.MakeResult{}, copyErr
 		}
 		if shouldSwitchBranch {
 			branch := targetBranch
 			if opts.BranchAuto {
 				branch = agent
 			}
-			if err := s.checkoutOrCreateBranch(ctx, dst, branch); err != nil {
-				rollbackErr := rollbackCreatedWorkspaces(workspaceRoot, append(created, agent))
+			branchErr := runCreationPhase(workspaceCtx, CreationProgress{Phase: PhaseConfigureBranch, Detail: branch}, func() error {
+				return s.checkoutOrCreateBranch(workspaceCtx, dst, branch)
+			})
+			if branchErr != nil {
+				summary.Completed = append([]string(nil), created...)
+				summary.Failed = agent
+				summary.Unstarted = append([]string(nil), missing[i+1:]...)
+				rollbackTargets := append(append([]string(nil), created...), agent)
+				rollbackErr := s.runCreationRollback(workspaceCtx, workspaceRoot, rollbackTargets)
 				if rollbackErr != nil {
-					return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(err, rollbackErr))
+					summary.RollbackError = rollbackErr.Error()
+					return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(branchErr, rollbackErr))
 				}
-				return model.MakeResult{}, err
+				summary.RolledBack = rollbackTargets
+				return model.MakeResult{}, branchErr
 			}
 		}
 		created = append(created, agent)
@@ -663,31 +766,56 @@ func (s *Service) Make(ctx context.Context, opts model.MakeOptions) (model.MakeR
 			hookBranch = agent
 		}
 		if !opts.NoSetup {
-			if err := s.runSetupForWorkspace(ctx, cwd, layout, opts.Source, agent, hookBranch); err != nil {
+			if setupErr := s.runSetupForWorkspace(workspaceCtx, cwd, layout, opts.Source, agent, hookBranch); setupErr != nil {
+				summary.Completed = append([]string(nil), created[:len(created)-1]...)
+				summary.Failed = agent
+				summary.Unstarted = append([]string(nil), missing[i+1:]...)
 				if !opts.RollbackOnSetupFailure {
+					summary.RetainedPath = dst
 					layout.ManagedWorkspaces = appendManagedWorkspaces(layout.ManagedWorkspaces, created...)
 					if metadataErr := writeWorkspaceMetadata(layout); metadataErr != nil {
-						return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "setup failed and metadata update failed", errors.Join(err, metadataErr))
+						return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "setup failed and metadata update failed", errors.Join(setupErr, metadataErr))
 					}
 				}
-				return setupFailureResult(workspaceRoot, created, err, opts.RollbackOnSetupFailure)
+				failureResult, failureErr, rollbackErr := s.setupFailureResult(workspaceCtx, workspaceRoot, created, setupErr, opts.RollbackOnSetupFailure)
+				if opts.RollbackOnSetupFailure {
+					if rollbackErr != nil {
+						summary.RollbackError = rollbackErr.Error()
+					} else {
+						summary.RolledBack = append([]string(nil), created...)
+					}
+				}
+				return failureResult, failureErr
 			}
 		}
+		summary.Completed = append([]string(nil), created...)
 	}
 	layout.ManagedWorkspaces = appendManagedWorkspaces(layout.ManagedWorkspaces, created...)
-	if err := writeWorkspaceMetadata(layout); err != nil {
-		rollbackErr := rollbackCreatedWorkspaces(workspaceRoot, created)
+	if metadataErr := writeWorkspaceMetadata(layout); metadataErr != nil {
+		rollbackErr := s.runCreationRollback(ctx, workspaceRoot, created)
 		if rollbackErr != nil {
-			return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(err, rollbackErr))
+			summary.RollbackError = rollbackErr.Error()
+			return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, "add failed and rollback failed", errors.Join(metadataErr, rollbackErr))
 		}
-		return model.MakeResult{}, err
+		summary.RolledBack = append([]string(nil), created...)
+		return model.MakeResult{}, metadataErr
 	}
 
 	return model.MakeResult{Created: created, WorkspaceRoot: workspaceRoot}, nil
 }
 
 func (s *Service) Sync(ctx context.Context, opts model.SyncOptions) (model.SyncResult, error) {
-	return s.syncRepo(ctx, opts.Repo, false)
+	reporter, _ := creationReporterFromContext(ctx)
+	if reporter == nil {
+		return s.syncRepo(ctx, opts.Repo, false)
+	}
+	var result model.SyncResult
+	err := runCreationPhase(ctx, CreationProgress{Phase: PhaseSyncBase, Detail: strings.TrimSpace(opts.Repo)}, func() error {
+		var syncErr error
+		result, syncErr = s.syncRepo(ctx, opts.Repo, false)
+		return syncErr
+	})
+	return result, err
 }
 
 func (s *Service) Clean(ctx context.Context, opts model.CleanOptions) (model.CleanResult, error) {

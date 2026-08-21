@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -973,6 +974,223 @@ func TestMakeRunsSetupScriptWithWorkspaceEnv(t *testing.T) {
 	}
 	if !strings.Contains(body, "/bob\n") {
 		t.Fatalf("expected setup script to run from workspace dir, got:\n%s", body)
+	}
+}
+
+func progressPairs(events []CreationProgress) []string {
+	pairs := make([]string, 0, len(events))
+	for _, event := range events {
+		pairs = append(pairs, string(event.Phase)+":"+string(event.Status)+":"+event.Workspace)
+	}
+	return pairs
+}
+
+func TestMakeReportsApplicableLifecyclePhases(t *testing.T) {
+	tests := []struct {
+		name string
+		opts model.MakeOptions
+		want []string
+	}{
+		{name: "copy only", opts: model.MakeOptions{Agent: "bob", Source: "base", NoSetup: true}, want: []string{
+			"copy-workspace:started:bob", "copy-workspace:completed:bob", "creation:completed:bob",
+		}},
+		{name: "local branch", opts: model.MakeOptions{Agent: "bob", Source: "base", Branch: "feature/bob", NoSetup: true}, want: []string{
+			"copy-workspace:started:bob", "copy-workspace:completed:bob", "configure-branch:started:bob", "configure-branch:completed:bob", "creation:completed:bob",
+		}},
+		{name: "tracked branch", opts: model.MakeOptions{Agent: "bob", Source: "base", Track: "feature/bob", NoSetup: true}, want: []string{
+			"copy-workspace:started:bob", "copy-workspace:completed:bob", "configure-tracking:started:bob", "configure-tracking:completed:bob", "creation:completed:bob",
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+			mustWriteFile(t, filepath.Join(layout.BaseRepoPath, "README.md"), []byte("ok"))
+			git := &fakeGit{topLevel: workspace, branchExistsByName: map[string]bool{"feature/bob": true}, remoteBranchExists: map[string]bool{"feature/bob": true}, localBranchExists: map[string]bool{"feature/bob": false}}
+			reporter := &recordingCreationReporter{}
+			ctx := WithCreationReporter(context.Background(), reporter, CreationIdentity{Workspace: "bob", Current: 1, Total: 1})
+			if _, err := newTestService(t, workspace, git).Make(ctx, tt.opts); err != nil {
+				t.Fatalf("make failed: %v", err)
+			}
+			events, _ := reporter.snapshot()
+			if got := progressPairs(events); !slices.Equal(got, tt.want) {
+				t.Fatalf("got %#v want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMakeSetupFailureReportsRetentionSummary(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	layout.SetupScript = "setup.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteFile(t, filepath.Join(workspace, "setup.sh"), []byte("#!/bin/sh\necho exploded\nexit 42\n"))
+	if err := os.Chmod(filepath.Join(workspace, "setup.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reporter := &recordingCreationReporter{}
+	ctx := WithCreationReporter(context.Background(), reporter, CreationIdentity{Workspace: "bob", Current: 1, Total: 1})
+	result, err := newTestService(t, workspace, &fakeGit{topLevel: workspace}).Make(ctx, model.MakeOptions{Agent: "bob", Source: "base"})
+	if err == nil {
+		t.Fatal("expected setup failure")
+	}
+	if len(result.Created) != 1 || result.Created[0] != "bob" {
+		t.Fatalf("expected retained result, got %#v", result)
+	}
+	events, output := reporter.snapshot()
+	last := events[len(events)-1]
+	if last.Phase != PhaseCreation || last.Status != ProgressFailed || last.Summary.Failed != "bob" || last.Summary.RetainedPath != filepath.Join(workspace, "bob") {
+		t.Fatalf("unexpected failure summary: %#v", last)
+	}
+	if strings.Count(output, "exploded") != 1 || strings.Contains(err.Error(), "exploded") {
+		t.Fatalf("output duplicated between stream and error: output=%q err=%v", output, err)
+	}
+}
+
+func TestMakeSetupFailureReportsRollbackAndCleanupFailure(t *testing.T) {
+	tests := []struct {
+		name           string
+		removeErr      error
+		wantRolledBack bool
+	}{
+		{name: "rollback succeeds", wantRolledBack: true},
+		{name: "rollback fails", removeErr: errors.New("permission denied")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+			layout.SetupScript = "setup.sh"
+			if err := writeWorkspaceMetadata(layout); err != nil {
+				t.Fatal(err)
+			}
+			mustWriteFile(t, filepath.Join(workspace, "setup.sh"), []byte("#!/bin/sh\nexit 42\n"))
+			if err := os.Chmod(filepath.Join(workspace, "setup.sh"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			git := &fakeGit{topLevel: workspace}
+			cloner := fakeCloner{}
+			svc := NewServiceWithDeps(Dependencies{CWD: func() (string, error) { return workspace, nil }, Chdir: func(string) error { return nil }, Cloner: cloner, Perms: &fakePerms{}, Git: git, Preflight: NewPreflightChecker(cloner), Resolver: NewRepoResolver(git), BranchDetector: NewBranchDetector(git), RemoveAll: func(path string) error {
+				if tt.removeErr != nil {
+					return tt.removeErr
+				}
+				return os.RemoveAll(path)
+			}})
+			reporter := &recordingCreationReporter{}
+			ctx := WithCreationReporter(context.Background(), reporter, CreationIdentity{Workspace: "bob", Current: 1, Total: 1})
+			_, err := svc.Make(ctx, model.MakeOptions{Agent: "bob", Source: "base", RollbackOnSetupFailure: true})
+			if err == nil {
+				t.Fatal("expected setup failure")
+			}
+			events, _ := reporter.snapshot()
+			last := events[len(events)-1]
+			if last.Summary.Failed != "bob" {
+				t.Fatalf("missing primary setup failure: %#v", last)
+			}
+			if tt.wantRolledBack && !slices.Equal(last.Summary.RolledBack, []string{"bob"}) {
+				t.Fatalf("expected rollback summary: %#v", last)
+			}
+			if tt.removeErr != nil && !strings.Contains(last.Summary.RollbackError, "permission denied") {
+				t.Fatalf("expected cleanup failure: %#v", last)
+			}
+			if tt.removeErr != nil && !strings.Contains(err.Error(), "setup failed and rollback failed") {
+				t.Fatalf("setup must remain primary with cleanup context: %v", err)
+			}
+		})
+	}
+}
+
+func TestMakeCancellationUsesExistingRetentionAndRollbackPolicies(t *testing.T) {
+	for _, rollback := range []bool{false, true} {
+		t.Run(fmt.Sprintf("rollback=%v", rollback), func(t *testing.T) {
+			workspace := t.TempDir()
+			layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+			layout.SetupScript = "setup.sh"
+			if err := writeWorkspaceMetadata(layout); err != nil {
+				t.Fatal(err)
+			}
+			mustWriteFile(t, filepath.Join(workspace, "setup.sh"), []byte("#!/bin/sh\nsleep 30\n"))
+			if err := os.Chmod(filepath.Join(workspace, "setup.sh"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			reporter := &recordingCreationReporter{}
+			cancelReporter := &cancelOnSetupReporter{CreationReporter: reporter, cancel: cancel}
+			ctx = WithCreationReporter(ctx, cancelReporter, CreationIdentity{Workspace: "bob", Current: 1, Total: 1})
+			_, err := newTestService(t, workspace, &fakeGit{topLevel: workspace}).Make(ctx, model.MakeOptions{Agent: "bob", Source: "base", RollbackOnSetupFailure: rollback})
+			if err == nil || !errors.Is(err, context.Canceled) {
+				t.Fatalf("expected cancellation cause, got %v", err)
+			}
+			exists := pathExists(filepath.Join(workspace, "bob"))
+			if rollback == exists {
+				t.Fatalf("rollback=%v workspace exists=%v", rollback, exists)
+			}
+			events, _ := reporter.snapshot()
+			found := false
+			for _, event := range events {
+				if event.Phase == PhaseSetup && event.Status == ProgressCancelled {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("missing cancelled setup event: %#v", events)
+			}
+		})
+	}
+}
+
+type cancelOnSetupReporter struct {
+	CreationReporter
+	cancel context.CancelFunc
+}
+
+func (r *cancelOnSetupReporter) Report(event CreationProgress) error {
+	err := r.CreationReporter.Report(event)
+	if event.Phase == PhaseSetup && event.Status == ProgressStarted {
+		r.cancel()
+	}
+	return err
+}
+
+func TestMakeSerialFailureSummarizesCompletedFailedAndUnstarted(t *testing.T) {
+	workspace := t.TempDir()
+	layout := mustSetupConfiguredWorkspace(t, workspace, "main")
+	layout.SetupScript = "setup.sh"
+	if err := writeWorkspaceMetadata(layout); err != nil {
+		t.Fatal(err)
+	}
+	body := "#!/bin/sh\necho $STOOGES_FOLDER\nif [ \"$STOOGES_FOLDER\" = curly ]; then exit 42; fi\n"
+	mustWriteFile(t, filepath.Join(workspace, "setup.sh"), []byte(body))
+	if err := os.Chmod(filepath.Join(workspace, "setup.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reporter := &recordingCreationReporter{}
+	ctx := WithCreationReporter(context.Background(), reporter, CreationIdentity{Workspace: "default workspaces"})
+	result, err := newTestService(t, workspace, &fakeGit{topLevel: workspace, currentBranch: "main"}).Make(ctx, model.MakeOptions{Source: "base"})
+	if err == nil {
+		t.Fatal("expected curly setup failure")
+	}
+	if !slices.Equal(result.Created, []string{"larry", "curly"}) {
+		t.Fatalf("unexpected partial result: %#v", result)
+	}
+	events, _ := reporter.snapshot()
+	last := events[len(events)-1]
+	if !slices.Equal(last.Summary.Completed, []string{"larry"}) || last.Summary.Failed != "curly" || !slices.Equal(last.Summary.Unstarted, []string{"moe"}) {
+		t.Fatalf("unexpected serial summary: %#v", last.Summary)
+	}
+	if pathExists(filepath.Join(workspace, "moe")) {
+		t.Fatal("later workspace must not start")
+	}
+	for _, event := range events {
+		if event.Workspace == "larry" && (event.Current != 1 || event.Total != 3) {
+			t.Fatalf("bad larry ordinal: %#v", event)
+		}
+		if event.Workspace == "curly" && (event.Current != 2 || event.Total != 3) {
+			t.Fatalf("bad curly ordinal: %#v", event)
+		}
 	}
 }
 

@@ -116,16 +116,20 @@ func runCreationPhase(ctx context.Context, progress CreationProgress, operation 
 	started := time.Now()
 	err := operation()
 	progress.Elapsed = time.Since(started)
-	switch {
-	case err == nil:
-		progress.Status = ProgressCompleted
-	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-		progress.Status = ProgressCancelled
-	default:
-		progress.Status = ProgressFailed
-	}
+	progress.Status = creationStatusForError(err)
 	ReportCreationProgress(ctx, progress)
 	return err
+}
+
+func creationStatusForError(err error) CreationStatus {
+	switch {
+	case err == nil:
+		return ProgressCompleted
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return ProgressCancelled
+	default:
+		return ProgressFailed
+	}
 }
 
 func cloneCreationSummary(summary CreationSummary) CreationSummary {
