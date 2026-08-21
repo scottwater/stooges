@@ -2,6 +2,17 @@
 
 Newest entries are listed first.
 
+## 0.87 — 2026-08-21
+
+### Added
+- Workspace-creation progress for `add`, `branch`, `fork`, `track`, and `pr`, covering base sync, copy, branch or tracking configuration, PR checkout, setup, and rollback when applicable.
+- Live setup-hook stdout and stderr on Stooges' stderr, with one delayed transient spinner on interactive terminals and durable phase lines in non-interactive logs.
+
+### Updated
+- Setup failure reporting now distinguishes retained workspaces, successful rollback, cancellation, and rollback failure with uncertain workspace state without replaying streamed hook output.
+- Multi-workspace creation shows workspace ordinals such as `[2/3]`, while single-workspace progress omits the redundant `[1/1]` label.
+- Progress remains diagnostic-only so command stdout results and shell-wrapper auto-CD behavior stay unchanged.
+
 ## 0.86 — 2026-08-03
 
 ### Added
