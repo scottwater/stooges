@@ -352,6 +352,9 @@ func runCLIProgressPhase(ctx context.Context, event engine.CreationProgress, ope
 	event.Status = engine.ProgressStarted
 	engine.ReportCreationProgress(ctx, event)
 	err := operation()
+	if err != nil && ctx.Err() != nil && !errors.Is(err, ctx.Err()) {
+		err = errors.Join(err, ctx.Err())
+	}
 	event.Elapsed = time.Since(started)
 	switch {
 	case err == nil:

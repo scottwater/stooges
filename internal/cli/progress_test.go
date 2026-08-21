@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -144,6 +145,24 @@ func TestCreationRendererPrintsPartialFailureSummary(t *testing.T) {
 	want := "completed: larry; failed: curly (retained at /tmp/workspace/curly); not started: moe\n"
 	if got := out.String(); got != want {
 		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestRunCLIProgressPhasePreservesOpaqueCancellation(t *testing.T) {
+	out := &bytes.Buffer{}
+	r := newCreationRenderer(out, rendererConfig{TTY: false, Now: time.Now})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ctx = engine.WithCreationReporter(ctx, r, engine.CreationIdentity{Workspace: "bob", Current: 1, Total: 1})
+	err := runCLIProgressPhase(ctx, engine.CreationProgress{Phase: engine.PhaseCheckoutPR, Detail: "#37"}, func() error {
+		return errors.New("checkout interrupted")
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation cause, got %v", err)
+	}
+	r.Close()
+	if !strings.Contains(out.String(), "Checking out PR: #37 cancelled") {
+		t.Fatalf("expected cancelled checkout progress, got %q", out.String())
 	}
 }
 
