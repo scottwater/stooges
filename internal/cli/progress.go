@@ -286,7 +286,7 @@ func (r *creationRenderer) writeSummaryLocked(event engine.CreationProgress) {
 		parts = append(parts, "rolled back: "+strings.Join(event.Summary.RolledBack, ", "))
 	}
 	if event.Summary.RollbackError != "" {
-		parts = append(parts, "rollback failed: "+event.Summary.RollbackError)
+		parts = append(parts, "rollback failed (workspace state uncertain): "+event.Summary.RollbackError)
 	}
 	if len(event.Summary.Unstarted) > 0 {
 		parts = append(parts, "not started: "+strings.Join(event.Summary.Unstarted, ", "))

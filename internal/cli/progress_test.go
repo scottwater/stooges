@@ -148,6 +148,18 @@ func TestCreationRendererPrintsPartialFailureSummary(t *testing.T) {
 	}
 }
 
+func TestCreationRendererMarksRollbackFailureStateUncertain(t *testing.T) {
+	out := &bytes.Buffer{}
+	r := newCreationRenderer(out, rendererConfig{TTY: false, Now: time.Now})
+	if err := r.Report(engine.CreationProgress{Phase: engine.PhaseCreation, Status: engine.ProgressFailed, Summary: engine.CreationSummary{Failed: "bob", RollbackError: "permission denied"}}); err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	if !strings.Contains(out.String(), "rollback failed (workspace state uncertain): permission denied") {
+		t.Fatalf("missing uncertain state warning: %q", out.String())
+	}
+}
+
 func TestRunCLIProgressPhasePreservesOpaqueCancellation(t *testing.T) {
 	out := &bytes.Buffer{}
 	r := newCreationRenderer(out, rendererConfig{TTY: false, Now: time.Now})

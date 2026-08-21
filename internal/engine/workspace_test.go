@@ -1513,7 +1513,7 @@ func TestMakeSetupFailureLeavesWorkspaceManagedByDefault(t *testing.T) {
 	reporter := &recordingCreationReporter{}
 	ctx := WithCreationReporter(context.Background(), reporter, CreationIdentity{Workspace: "bob", Current: 1, Total: 1})
 	_, err := svc.Make(ctx, model.MakeOptions{Agent: "bob", Source: "base"})
-	if err == nil || !strings.Contains(err.Error(), "setup failed; workspace left at") || !strings.Contains(err.Error(), "setup-fail.sh") || !strings.Contains(err.Error(), "exit status 42") || strings.Contains(err.Error(), "setup exploded") {
+	if err == nil || !strings.Contains(err.Error(), "setup failed; retained managed workspace at") || !strings.Contains(err.Error(), "setup-fail.sh") || !strings.Contains(err.Error(), "exit status 42") || strings.Contains(err.Error(), "setup exploded") {
 		t.Fatalf("expected concise setup failure with retained workspace message, got %v", err)
 	}
 	_, output := reporter.snapshot()

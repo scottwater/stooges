@@ -138,7 +138,7 @@ stooges trash auto-cd --force
 - Workspace creation progress for `add`, `branch`, `fork`, `track`, and `pr` is diagnostic stderr. Stooges stdout remains the stable result channel.
 - TTYs use one delayed transient spinner with workspace, phase, and elapsed time. Non-TTY/CI stderr receives durable phase start and completion lines.
 - Setup-hook stdout and stderr both stream live to Stooges stderr with bytes and ANSI sequences preserved; already-streamed output is not duplicated in setup failure errors.
-- Setup progress is omitted when no hook is configured or `--no-setup` is used. Rollback progress appears only when cleanup runs.
+- Setup progress is omitted when no hook is configured or `--no-setup` is used. Rollback progress appears only when cleanup runs. A retained setup-failure workspace is named; setup-plus-rollback failure reports both errors and marks workspace state uncertain.
 - The private `STOOGES_CD_FILE` remains the only auto-CD destination channel. Auto-CD occurs after successful setup, never after setup failure; `--no-cd` and `STOOGES_NO_CD` are unchanged.
 
 ### Sync Base Repo

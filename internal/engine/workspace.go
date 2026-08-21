@@ -465,19 +465,19 @@ func (s *Service) setupFailureResult(ctx context.Context, workspaceRoot string, 
 	if len(created) > 0 {
 		last = filepath.Join(workspaceRoot, created[len(created)-1])
 	}
-	message := "setup failed; workspace left in place for inspection/cleanup"
+	message := "setup failed; retained managed workspace in place for inspection/cleanup"
 	if last != "" {
-		message = fmt.Sprintf("setup failed; workspace left at %s for inspection/cleanup", last)
+		message = fmt.Sprintf("setup failed; retained managed workspace at %s for inspection/cleanup", last)
 	}
 	return model.MakeResult{Created: created, WorkspaceRoot: workspaceRoot}, apperrors.Wrap(apperrors.KindFilesystemFailure, message, setupErr), nil
 }
 
 func setupFailureError(workspaceRoot, workspace string, setupErr error, rollback bool) error {
-	message := "setup failed; workspace left in place for inspection/cleanup"
+	message := "setup failed; retained managed workspace in place for inspection/cleanup"
 	if rollback {
 		message = "setup failed; rolled back created workspace"
 	} else if workspace != "" {
-		message = fmt.Sprintf("setup failed; workspace left at %s for inspection/cleanup", filepath.Join(workspaceRoot, workspace))
+		message = fmt.Sprintf("setup failed; retained managed workspace at %s for inspection/cleanup", filepath.Join(workspaceRoot, workspace))
 	}
 	return apperrors.Wrap(apperrors.KindFilesystemFailure, message, setupErr)
 }

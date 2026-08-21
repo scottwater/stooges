@@ -289,7 +289,7 @@ Environment:
 - `STOOGES_FOLDER`: workspace name
 - `STOOGES_FOLDER_PATH`: workspace absolute path
 
-During workspace creation, setup-hook stdout and stderr stream live to Stooges' stderr without prefixes or ANSI rewriting. A TTY spinner moves out of the way for complete hook lines and resumes afterward; an incomplete trailing line is held only until the hook writes its newline or exits. Failure errors name the configured setup path and exit status without replaying output that already streamed. Successful single-workspace auto-CD still uses the private `STOOGES_CD_FILE` protocol after setup succeeds; hook output cannot become that destination. Setup failure does not auto-CD, and `--no-cd` plus `STOOGES_NO_CD` are unchanged.
+During workspace creation, setup-hook stdout and stderr stream live to Stooges' stderr without prefixes or ANSI rewriting. A TTY spinner moves out of the way for complete hook lines and resumes afterward; an incomplete trailing line is held only until the hook writes its newline or exits. Failure errors name the configured setup path and exit status without replaying output that already streamed. Without requested rollback, the error identifies the retained managed workspace and its path. If setup and rollback both fail, setup remains the primary failure, the cleanup failure is reported separately, and workspace state is marked uncertain. Successful single-workspace auto-CD still uses the private `STOOGES_CD_FILE` protocol after setup succeeds; hook output cannot become that destination. Setup failure does not auto-CD, and `--no-cd` plus `STOOGES_NO_CD` are unchanged.
 
 ## `unlock`
 
