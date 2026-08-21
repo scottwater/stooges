@@ -42,7 +42,9 @@ func newTrackCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 				return err
 			}
 			branchName, branchAuto := resolveBranchSelection(cmd, args, branch)
-			result, err := svc.Make(cmd.Context(), model.MakeOptions{
+			ctx, renderer := newCreationContext(cmd.Context(), streams, engine.CreationIdentity{Workspace: workspace, Current: 1, Total: 1})
+			defer renderer.Close()
+			result, err := svc.Make(ctx, model.MakeOptions{
 				Agent:                  workspace,
 				Source:                 source,
 				Track:                  track,

@@ -32,10 +32,12 @@ func newBranchCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := maybeSyncBaseSource(cmd.Context(), svc, source, noSync); err != nil {
+			ctx, renderer := newCreationContext(cmd.Context(), streams, engine.CreationIdentity{Workspace: workspace, Current: 1, Total: 1})
+			defer renderer.Close()
+			if err := maybeSyncBaseSource(ctx, svc, source, noSync); err != nil {
 				return err
 			}
-			result, err := svc.Make(cmd.Context(), model.MakeOptions{
+			result, err := svc.Make(ctx, model.MakeOptions{
 				Agent:                  workspace,
 				Source:                 source,
 				Branch:                 branch,

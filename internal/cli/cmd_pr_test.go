@@ -7,9 +7,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/scottwater/stooges/internal/engine"
 	apperrors "github.com/scottwater/stooges/internal/errors"
 	gitops "github.com/scottwater/stooges/internal/git"
 	"github.com/scottwater/stooges/internal/model"
@@ -142,6 +144,41 @@ func TestPRCommandChecksOutCrossRepoPullRequest(t *testing.T) {
 	}
 	if !svc.setupCalled || svc.lastSetup.Workspace != "forked-fix" || svc.lastSetup.Source != "base" || svc.lastSetup.Branch != "" {
 		t.Fatalf("expected setup after successful checkout, got called=%v opts=%#v", svc.setupCalled, svc.lastSetup)
+	}
+}
+
+func TestPRCommandUsesOneUnifiedProgressStreamForSameAndCrossRepo(t *testing.T) {
+	tests := []struct {
+		name         string
+		pr           githubPR
+		wantCheckout bool
+	}{
+		{name: "same repo", pr: githubPR{Number: 37, Title: "Same", HeadRefName: "feature/same"}},
+		{name: "cross repo", pr: githubPR{Number: 38, Title: "Cross", HeadRefName: "feature/cross", IsCrossRepository: true}, wantCheckout: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &fakeService{makeProgress: func(ctx context.Context) {
+				engine.ReportCreationProgress(ctx, engine.CreationProgress{Phase: engine.PhaseCopyWorkspace, Status: engine.ProgressStarted})
+				engine.ReportCreationProgress(ctx, engine.CreationProgress{Phase: engine.PhaseCopyWorkspace, Status: engine.ProgressCompleted})
+			}}
+			gh := &fakeGitHubPRClient{viewPRs: map[int]githubPR{tt.pr.Number: tt.pr}}
+			out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+			cmd := newRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut}, noopUpdater{}, gh, func(context.Context) (string, error) { return "/tmp/repo", nil })
+			cmd.SetArgs([]string{"pr", strconv.Itoa(tt.pr.Number), "--no-setup"})
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("execute failed: %v", err)
+			}
+			if strings.Contains(errOut.String(), "Creating workspace for PR") {
+				t.Fatalf("old nested spinner remains: %q", errOut.String())
+			}
+			if got := strings.Count(errOut.String(), "Checking out PR: #"); (got == 2) != tt.wantCheckout {
+				t.Fatalf("checkout progress count=%d stderr=%q", got, errOut.String())
+			}
+			if strings.Count(errOut.String(), "Copying workspace") != 2 {
+				t.Fatalf("expected one start/completion pair: %q", errOut.String())
+			}
+		})
 	}
 }
 

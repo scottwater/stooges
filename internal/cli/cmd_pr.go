@@ -279,9 +279,9 @@ func runPRAction(ctx context.Context, svc engine.WorkspaceService, streams Strea
 	}
 
 	workspace := derivePRWorkspaceName(pr)
-	stop := startSpinner(streams.ErrOut, fmt.Sprintf("Creating workspace for PR #%d", pr.Number))
+	ctx, renderer := newCreationContext(ctx, streams, engine.CreationIdentity{Workspace: workspace, Current: 1, Total: 1})
+	defer renderer.Close()
 	result, err := checkoutPullRequestWorkspace(ctx, svc, gh, pr, workspace, strings.TrimSpace(branch), noSetup, rollbackOnSetupFailure)
-	stop(err)
 	if err != nil {
 		return err
 	}
@@ -367,12 +367,15 @@ func checkoutPullRequestWorkspace(ctx context.Context, svc engine.WorkspaceServi
 		return model.MakeResult{}, apperrors.New(apperrors.KindFilesystemFailure, "expected exactly one created workspace with a workspace root")
 	}
 	workspacePath := filepath.Join(result.WorkspaceRoot, result.Created[0])
-	if err := gh.Checkout(ctx, workspacePath, pr.Number, branch); err != nil {
+	checkoutErr := runCLIProgressPhase(ctx, engine.CreationProgress{Phase: engine.PhaseCheckoutPR, Detail: fmt.Sprintf("#%d", pr.Number)}, func() error {
+		return gh.Checkout(ctx, workspacePath, pr.Number, branch)
+	})
+	if checkoutErr != nil {
 		rollbackErr := rollbackPartialPRWorkspace(ctx, svc, result.Created[0], workspacePath)
 		if rollbackErr != nil {
-			return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, fmt.Sprintf("gh pr checkout failed in %s and rollback failed", workspacePath), errors.Join(err, rollbackErr))
+			return model.MakeResult{}, apperrors.Wrap(apperrors.KindRollbackFailure, fmt.Sprintf("gh pr checkout failed in %s and rollback failed", workspacePath), errors.Join(checkoutErr, rollbackErr))
 		}
-		return model.MakeResult{}, wrapPRCheckoutFailure(workspacePath, err)
+		return model.MakeResult{}, wrapPRCheckoutFailure(workspacePath, checkoutErr)
 	}
 	if !noSetup {
 		if _, err := svc.Setup(ctx, model.SetupOptions{Workspace: result.Created[0], Source: "base", Branch: branch, RollbackOnSetupFailure: rollbackOnSetupFailure}); err != nil {

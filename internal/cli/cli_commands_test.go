@@ -3,12 +3,16 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/scottwater/stooges/internal/engine"
+	apperrors "github.com/scottwater/stooges/internal/errors"
 	"github.com/scottwater/stooges/internal/model"
 	"github.com/scottwater/stooges/internal/update"
 	"github.com/scottwater/stooges/internal/version"
@@ -35,6 +39,7 @@ type fakeService struct {
 	lastTrash                  model.TrashOptions
 	lastRollback               string
 	makeFn                     func(context.Context, model.MakeOptions) (model.MakeResult, error)
+	makeProgress               func(context.Context)
 	setupErr                   error
 	rollbackErr                error
 	makeResult                 model.MakeResult
@@ -58,6 +63,9 @@ func (f *fakeService) Make(ctx context.Context, opts model.MakeOptions) (model.M
 	f.makeCalled = true
 	f.lastCtx = ctx
 	f.lastMake = opts
+	if f.makeProgress != nil {
+		f.makeProgress(ctx)
+	}
 	if f.makeFn != nil {
 		res, err := f.makeFn(ctx, opts)
 		if err == nil {
@@ -94,6 +102,9 @@ func (f *fakeService) Setup(ctx context.Context, opts model.SetupOptions) (model
 	f.setupCalled = true
 	f.lastCtx = ctx
 	f.lastSetup = opts
+	if f.makeProgress != nil {
+		f.makeProgress(ctx)
+	}
 	if f.setupErr != nil {
 		return model.SetupResult{}, f.setupErr
 	}
@@ -103,6 +114,9 @@ func (f *fakeService) Sync(ctx context.Context, opts model.SyncOptions) (model.S
 	f.syncCalled++
 	f.lastCtx = ctx
 	f.lastSync = opts
+	if f.makeProgress != nil {
+		f.makeProgress(ctx)
+	}
 	if f.syncErr != nil {
 		return model.SyncResult{}, f.syncErr
 	}
@@ -619,6 +633,108 @@ func TestForkCommandSanitizesWorkspaceWhenBranchHasNoSlash(t *testing.T) {
 	}
 	if svc.lastMake.Agent != "release-candidate-2026-04-15" || svc.lastMake.Source != "larry" || svc.lastMake.Branch != "release candidate: 2026-04-15 !!!" || !svc.lastMake.RequireNewBranch {
 		t.Fatalf("expected sanitized workspace name and current workspace source, got %#v", svc.lastMake)
+	}
+}
+
+func TestCreationCommandsAttachUnifiedReporter(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{name: "add", args: []string{"add", "bob", "--no-sync"}},
+		{name: "branch", args: []string{"branch", "feature/bob", "--no-sync"}},
+		{name: "fork", args: []string{"fork", "feature/bob"}},
+		{name: "track", args: []string{"track", "feature/bob"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &fakeService{currentWorkspace: engine.CurrentWorkspace{Name: "larry", Path: t.TempDir(), WorkspaceRoot: "/tmp/workspace"}}
+			svc.makeProgress = func(ctx context.Context) {
+				engine.ReportCreationProgress(ctx, engine.CreationProgress{Phase: engine.PhaseCopyWorkspace, Status: engine.ProgressStarted})
+				engine.ReportCreationProgress(ctx, engine.CreationProgress{Phase: engine.PhaseCopyWorkspace, Status: engine.ProgressCompleted})
+			}
+			errOut := &bytes.Buffer{}
+			cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: &bytes.Buffer{}, ErrOut: errOut})
+			cmd.SetArgs(tc.args)
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("execute failed: %v", err)
+			}
+			if strings.Count(errOut.String(), "Copying workspace") != 2 {
+				t.Fatalf("command did not attach one reporter: %q", errOut.String())
+			}
+		})
+	}
+}
+
+func TestAddProgressAndHookOutputStayOnStderrWhileStdoutStaysStable(t *testing.T) {
+	svc := &fakeService{makeProgress: func(ctx context.Context) {
+		engine.ReportCreationProgress(ctx, engine.CreationProgress{Phase: engine.PhaseCopyWorkspace, Status: engine.ProgressStarted, Workspace: "bob", Current: 1, Total: 1})
+		engine.ReportCreationProgress(ctx, engine.CreationProgress{Phase: engine.PhaseCopyWorkspace, Status: engine.ProgressCompleted, Workspace: "bob", Current: 1, Total: 1, Elapsed: time.Second})
+		engine.ReportCreationProgress(ctx, engine.CreationProgress{Phase: engine.PhaseSetup, Status: engine.ProgressStarted, Workspace: "bob", Current: 1, Total: 1, Detail: "setup.sh"})
+		engine.WriteCreationHookOutput(ctx, []byte("/tmp/not-the-cd-target\nsetup output\n"))
+		engine.ReportCreationProgress(ctx, engine.CreationProgress{Phase: engine.PhaseSetup, Status: engine.ProgressCompleted, Workspace: "bob", Current: 1, Total: 1, Detail: "setup.sh", Elapsed: 2 * time.Second})
+	}}
+	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+	cdFile := filepath.Join(t.TempDir(), "cd-target")
+	t.Setenv("STOOGES_CD_FILE", cdFile)
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"add", "bob", "--no-sync"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if got := out.String(); got != "created: bob\n" {
+		t.Fatalf("stdout changed: %q", got)
+	}
+	for _, want := range []string{"Copying workspace", "Running setup: setup.sh", "/tmp/not-the-cd-target\n", "setup output\n"} {
+		if !strings.Contains(errOut.String(), want) {
+			t.Fatalf("stderr missing %q: %q", want, errOut.String())
+		}
+	}
+	data, err := os.ReadFile(cdFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(data); got != "/tmp/workspace/bob" {
+		t.Fatalf("hook output altered auto-cd target: %q", got)
+	}
+}
+
+func TestAddProgressWriterFailureDoesNotChangeResultOrAutoCD(t *testing.T) {
+	svc := &fakeService{makeProgress: func(ctx context.Context) {
+		engine.ReportCreationProgress(ctx, engine.CreationProgress{Phase: engine.PhaseCopyWorkspace, Status: engine.ProgressStarted, Workspace: "bob", Current: 1, Total: 1})
+		engine.WriteCreationHookOutput(ctx, []byte("output\n"))
+	}}
+	out := &bytes.Buffer{}
+	cdFile := filepath.Join(t.TempDir(), "cd-target")
+	t.Setenv("STOOGES_CD_FILE", cdFile)
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errorWriter{err: errors.New("closed stderr")}})
+	cmd.SetArgs([]string{"add", "bob", "--no-sync"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("writer failure changed result: %v", err)
+	}
+	if out.String() != "created: bob\n" {
+		t.Fatalf("stdout changed: %q", out.String())
+	}
+	if data, err := os.ReadFile(cdFile); err != nil || string(data) != "/tmp/workspace/bob" {
+		t.Fatalf("auto-cd changed: data=%q err=%v", data, err)
+	}
+}
+
+func TestAddFailureKeepsStdoutAndAutoCDEmpty(t *testing.T) {
+	svc := &fakeService{makeErr: apperrors.New(apperrors.KindFilesystemFailure, "setup failed; workspace retained at /tmp/workspace/bob")}
+	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+	cdFile := filepath.Join(t.TempDir(), "cd-target")
+	t.Setenv("STOOGES_CD_FILE", cdFile)
+	cmd := NewRootCmd(svc, Streams{In: strings.NewReader(""), Out: out, ErrOut: errOut})
+	cmd.SetArgs([]string{"add", "bob", "--no-sync"})
+	err := cmd.Execute()
+	if err == nil || apperrors.ExitCode(err) != apperrors.ExitFilesystemFailure {
+		t.Fatalf("unexpected error/exit: %v", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("failure polluted stdout: %q", out.String())
+	}
+	if _, statErr := os.Stat(cdFile); !os.IsNotExist(statErr) {
+		t.Fatalf("failure wrote auto-cd file: %v", statErr)
 	}
 }
 

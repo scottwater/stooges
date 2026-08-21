@@ -75,13 +75,19 @@ func newMakeCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 			if len(args) >= 1 {
 				workspace = args[0]
 			}
+			identityName := strings.TrimSpace(workspace)
+			if identityName == "" {
+				identityName = "default workspaces"
+			}
+			ctx, renderer := newCreationContext(cmd.Context(), streams, engine.CreationIdentity{Workspace: identityName, Current: 1, Total: 1})
+			defer renderer.Close()
 			branchName, branchAuto := resolveBranchSelection(cmd, args, branch)
 			if strings.TrimSpace(track) == "" {
-				if err := maybeSyncBaseSource(cmd.Context(), svc, source, noSync); err != nil {
+				if err := maybeSyncBaseSource(ctx, svc, source, noSync); err != nil {
 					return err
 				}
 			}
-			result, err := svc.Make(cmd.Context(), model.MakeOptions{
+			result, err := svc.Make(ctx, model.MakeOptions{
 				Agent:                  workspace,
 				Source:                 source,
 				Track:                  track,

@@ -48,7 +48,9 @@ func newForkCmd(svc engine.WorkspaceService, streams Streams) *cobra.Command {
 			if err := ensureForkSourceSafe(current.Path); err != nil {
 				return err
 			}
-			result, err := svc.Make(cmd.Context(), model.MakeOptions{
+			ctx, renderer := newCreationContext(cmd.Context(), streams, engine.CreationIdentity{Workspace: workspace, Current: 1, Total: 1})
+			defer renderer.Close()
+			result, err := svc.Make(ctx, model.MakeOptions{
 				Agent:                  workspace,
 				Source:                 current.Name,
 				Branch:                 branch,
